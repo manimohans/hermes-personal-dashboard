@@ -95,7 +95,7 @@ class ApiTest(unittest.TestCase):
         )
         self.assertEqual(refresh.status_code, 200)
         self.assertGreaterEqual(len(refresh.json()["context_items"]), 1)
-        self.assertGreaterEqual(len(refresh.json()["cards"]), 1)
+        self.assertEqual(len(refresh.json()["cards"]), 0)
 
         context = self.client.get("/context")
         self.assertEqual(context.status_code, 200)

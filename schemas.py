@@ -30,7 +30,7 @@ CARD_PROPERTIES = {
     "source_url": {"type": "string", "description": "Optional source URL."},
     "why_shown": {"type": "string", "description": "Why this card is relevant to the user."},
     "confidence": {"type": "number", "description": "Optional confidence from 0 to 1."},
-    "payload": {"type": "object", "description": "Optional structured metadata."},
+    "payload": {"type": "object", "description": "Optional structured metadata. Use ai_curated=true for Hermes-written visible cards; section and relevance_score can guide placement/ranking."},
 }
 
 PERSONAL_DASHBOARD_UPSERT_CARD = {
@@ -90,6 +90,7 @@ PERSONAL_DASHBOARD_LIST_CARDS = {
             "status": {"type": "string", "enum": ["active", "stale", "dismissed", "expired", "pinned"]},
             "domain": {"type": "string"},
             "include_hidden": {"type": "boolean", "description": "Include dismissed and expired cards."},
+            "include_scanner": {"type": "boolean", "description": "Debug only: include legacy scanner-generated cards that are hidden from normal views."},
             "limit": {"type": "integer", "minimum": 1, "maximum": 500},
         },
     },
@@ -153,7 +154,7 @@ PERSONAL_DASHBOARD_LIST_CONTEXT = {
 
 PERSONAL_DASHBOARD_HIDE_CONTEXT = {
     "name": "personal_dashboard_hide_context",
-    "description": "Hide an inferred context item and dismiss its generated dashboard card.",
+    "description": "Hide an inferred context item and suppress any legacy scanner-generated dashboard card for it.",
     "parameters": {
         "type": "object",
         "properties": {"id": {"type": "string", "description": "Context item id."}},
@@ -174,13 +175,13 @@ PERSONAL_DASHBOARD_GET_SNAPSHOT = {
 
 PERSONAL_DASHBOARD_REFRESH_FROM_HERMES = {
     "name": "personal_dashboard_refresh_from_hermes",
-    "description": "Scan existing Hermes memory, session history, and cron output, infer relevant context, and update dashboard cards. Requires no user setup.",
+    "description": "Scan existing Hermes memory, session history, and cron output, infer relevant context signals, and suppress raw scanner cards. Requires no user setup. Useful visible cards should be written separately with personal_dashboard_upsert_card.",
     "parameters": {
         "type": "object",
         "properties": {
             "include_sessions": {"type": "boolean", "description": "Scan ~/.hermes/state.db when available. Defaults to true."},
             "include_cron": {"type": "boolean", "description": "Scan cron jobs and recent cron output when available. Defaults to true."},
-            "create_cards": {"type": "boolean", "description": "Create visible cards from inferred context. Defaults to true."},
+            "create_cards": {"type": "boolean", "description": "Legacy flag. Context scans do not create visible cards; Hermes should curate cards with personal_dashboard_upsert_card. Defaults to false."},
         },
     },
 }

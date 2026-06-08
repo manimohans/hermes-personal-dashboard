@@ -3,11 +3,12 @@
 Zero-setup standalone personal dashboard for Hermes Agent.
 
 Hermes already knows things from memory, sessions, cron runs, and prior agent
-work. This app turns that existing context into a dashboard without asking
+work. This app gives Hermes a dashboard surface without asking
 the user to pick interests, enter a location, add tickers, choose teams, or
 build a setup profile.
 
-Open the web app. It reflects what Hermes has already figured out.
+Open the web app. Hermes scans existing context into relevance signals, then
+Hermes jobs write and update the useful cards.
 
 ## What It Shows
 
@@ -46,12 +47,15 @@ Instead it scans existing Hermes state:
 - recent `$HERMES_HOME/cron/output/**`
 - cards written by Hermes jobs through this plugin
 
-Then it creates inferred context items and dashboard cards.
+Then it creates inferred context items. Visible cards are written separately by
+Hermes jobs through the dashboard tools, so raw prompts, schedules, logs, and
+memory-write JSON do not become dashboard content.
 
 ## Install And Run
 
 One command does the install, web UI build checks, server start, and URL print.
-It starts its own standalone web server and gives the terminal back.
+It installs the standalone web app, installs the Hermes tool/skill bundle, starts
+its own web server, and gives the terminal back.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/run.sh | bash
@@ -86,6 +90,7 @@ The launcher follows the useful Hermes dashboard conventions:
 | `--port` | preferred port, default `9119` |
 | `--insecure` | required for non-localhost binding |
 | `--no-open` | do not launch a browser |
+| `--no-plugin` | skip Hermes tool/skill bundle install |
 | `--skip-build` | skip local syntax/build checks |
 | `--strict-port` | fail if the requested port is busy |
 
@@ -131,11 +136,11 @@ Check the install:
 ./scripts/doctor.sh
 ```
 
-Optional: install the same repo as a Hermes plugin so Hermes jobs can use the
-model-visible dashboard tools:
+The same repo is installed as a Hermes plugin by default so Hermes jobs can use
+the model-visible dashboard tools. To skip that, use:
 
 ```bash
-./run.sh --with-plugin
+./run.sh --no-plugin
 ```
 
 ## Try It Before Installing Hermes
@@ -158,13 +163,12 @@ data so you can click through the zero-setup experience.
 ## First Run
 
 On first load, the standalone app asks the backend for `/snapshot`. The backend can
-auto-scan Hermes memory, session history, cron jobs, and cron output, then write
-cards into the local SQLite store.
+auto-scan Hermes memory, session history, cron jobs, and cron output, then store
+inferred relevance signals.
 
-If Hermes has no memory or saved sessions yet, the dashboard still shows a
-ready card and source coverage. It explains what it checked and then fills in
-automatically as Hermes builds memory or runs jobs. It does not ask the user to
-fill out a form.
+If Hermes has no curated cards yet, the dashboard shows the signal state and
+source coverage in the side rail instead of pretending logs are useful cards.
+It fills in when Hermes cron jobs or chats call `personal_dashboard_upsert_card`.
 
 Useful command:
 
@@ -202,7 +206,10 @@ context scanner
 inferred context items
         |
         v
-dashboard cards
+Hermes curator jobs
+        |
+        v
+dashboard cards ranked by priority, freshness, and time relevance
         |
         v
 Hermes cron jobs keep live cards fresh
@@ -218,6 +225,7 @@ Hermes to:
 - read inferred context items
 - fetch live data only when the inferred context points to it
 - write structured cards
+- mark visible cards with `payload.ai_curated: true`
 - attach evidence
 - record refresh results
 
@@ -226,8 +234,8 @@ Hermes to:
 The standalone dashboard includes correction controls, not setup controls:
 
 - **Refresh**: reload the snapshot
-- **Scan Hermes now**: force a memory/session/cron scan
-- **Refresh jobs**: install autonomous recurring jobs when Hermes cron integration is available
+- **Scan signals**: force a memory/session/cron signal scan
+- **Create refresh jobs**: install autonomous recurring jobs when Hermes cron integration is available
 - **Pin / Unpin**: keep a card visible
 - **Dismiss**: hide a card
 - **Hide** on inferred context: stop showing that inferred item
@@ -235,7 +243,7 @@ The standalone dashboard includes correction controls, not setup controls:
 
 During first load, manual scans, snapshot refreshes, and running cron jobs, the
 top of the dashboard shows a **Working** strip with an animated scan meter. That
-strip is the visual signal that Hermes context is being read or dashboard cards
+strip is the visual signal that Hermes context is being read or curated cards
 are being updated.
 
 ## Plugin Tools
@@ -244,7 +252,7 @@ Hermes jobs can use these model-visible tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `personal_dashboard_refresh_from_hermes` | scan Hermes memory/session/cron state and update inferred cards |
+| `personal_dashboard_refresh_from_hermes` | scan Hermes memory/session/cron state into relevance signals |
 | `personal_dashboard_list_context` | read inferred context items |
 | `personal_dashboard_upsert_context` | add or improve inferred context from agent reasoning |
 | `personal_dashboard_hide_context` | hide an inferred context item |
@@ -271,7 +279,7 @@ Important routes:
 | Route | Purpose |
 | --- | --- |
 | `GET /snapshot` | autonomous dashboard snapshot, auto-refreshes by default |
-| `POST /context/refresh` | force a Hermes memory/session/cron scan |
+| `POST /context/refresh` | force a Hermes memory/session/cron signal scan |
 | `GET /context` | list inferred context |
 | `POST /context` | add or update inferred context |
 | `POST /context/{id}/hide` | hide inferred context |

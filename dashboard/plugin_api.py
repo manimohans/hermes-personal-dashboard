@@ -31,10 +31,11 @@ def _cron_prompt(kind: str) -> str:
     base = (
         "Use the hermes-personal-dashboard:briefing-curator skill. "
         "Start with personal_dashboard_refresh_from_hermes so the dashboard reflects "
-        "existing Hermes memory, sessions, cron output, and prior agent work without "
+        "existing Hermes memory, sessions, cron output, and prior agent work as relevance signals without "
         "requiring user setup. Then read personal_dashboard_list_context and use the "
-        "available Hermes tools to refresh useful live cards for the inferred context. "
-        "Write structured cards with personal_dashboard_upsert_card and record the run "
+        "available Hermes tools to refresh useful live cards for the inferred context. Do not turn raw "
+        "scanner lines, prompts, schedules, or memory-write JSON into cards. Write structured AI-curated "
+        "cards with personal_dashboard_upsert_card and record the run "
         "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
@@ -106,10 +107,11 @@ async def get_cards(
     status: Optional[str] = Query(None),
     domain: Optional[str] = Query(None),
     include_hidden: bool = False,
+    include_scanner: bool = False,
     limit: int = 200,
 ) -> Dict[str, Any]:
     try:
-        return {"cards": core.list_cards(status=status, domain=domain, include_hidden=include_hidden, limit=limit)}
+        return {"cards": core.list_cards(status=status, domain=domain, include_hidden=include_hidden, include_scanner=include_scanner, limit=limit)}
     except Exception as exc:
         _raise(exc)
 
@@ -224,7 +226,7 @@ async def refresh_context(body: Optional[Dict[str, Any]] = None) -> Dict[str, An
         return core.refresh_from_hermes_context(
             include_sessions=bool(body.get("include_sessions", True)),
             include_cron=bool(body.get("include_cron", True)),
-            create_cards=bool(body.get("create_cards", True)),
+            create_cards=bool(body.get("create_cards", False)),
         )
     except Exception as exc:
         _raise(exc)

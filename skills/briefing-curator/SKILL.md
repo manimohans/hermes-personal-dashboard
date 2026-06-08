@@ -18,12 +18,15 @@ cards.
 
 ## Operating Rules
 
-- Start with `personal_dashboard_refresh_from_hermes`. This scans existing
-  Hermes memory, session history, cron jobs/output, and prior agent work.
+- Start with `personal_dashboard_refresh_from_hermes` using `create_cards:
+  false`. This scans existing Hermes memory, session history, cron jobs/output,
+  and prior agent work into relevance signals.
 - Read inferred context with `personal_dashboard_list_context`.
 - Treat inferred context as the user's already-provided intent. Use it to decide
   which live data is worth fetching with available Hermes tools.
 - Write useful visible cards with `personal_dashboard_upsert_card`.
+- Never turn raw scanner lines, prompts, cron schedules, persona text, or
+  memory-write JSON into visible cards.
 - Use `personal_dashboard_upsert_context` when you discover a durable relevance
   signal from Hermes context that the deterministic scanner missed.
 - Adjust existing cards with `personal_dashboard_patch_card` when only status,
@@ -53,12 +56,15 @@ Every visible card should include:
 - `source_label` or evidence when available
 - `why_shown` that points to the inferred Hermes context
 - freshness through `updated_at` and optional `valid_until`
+- `payload.ai_curated: true`
+- optional `payload.relevance_score` from `0` to `150` when the card should
+  rank higher or lower than priority/freshness alone
 
 ## Card Writing Pattern
 
 ```json
 {
-  "id": "auto-context-news-ai-briefing",
+  "id": "news-ai-briefing",
   "domain": "news",
   "title": "AI news briefing",
   "summary": "Three high-signal AI updates are worth showing this morning.",
@@ -69,7 +75,8 @@ Every visible card should include:
   "why_shown": "Auto-discovered from Hermes memory/session history.",
   "payload": {
     "section": "today",
-    "auto_discovered": true
+    "ai_curated": true,
+    "relevance_score": 40
   }
 }
 ```
@@ -134,6 +141,7 @@ Morning briefing:
 Use hermes-personal-dashboard:briefing-curator. Refresh the Personal Dashboard
 from existing Hermes memory, sessions, cron output, and prior agent work. Do not
 ask the user to configure interests. Update cards and record the refresh result.
+Do not show raw scanner output as cards.
 ```
 
 Alerts:

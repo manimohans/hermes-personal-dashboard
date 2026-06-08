@@ -340,6 +340,92 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return item
 
 
+def _card_payload(card: Dict[str, Any]) -> Dict[str, Any]:
+    payload = card.get("payload") or {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def is_scanner_generated_card(card: Dict[str, Any]) -> bool:
+    """Return true for deterministic scanner artifacts that should not be main cards."""
+    payload = _card_payload(card)
+    if payload.get("ai_curated") or payload.get("user_curated") or payload.get("keep_visible"):
+        return False
+    if payload.get("scanner_generated") or payload.get("system_card"):
+        return True
+    card_id = str(card.get("id") or "")
+    summary = str(card.get("summary") or "")
+    source_label = str(card.get("source_label") or "")
+    if card_id == "system-hermes-context-map":
+        return True
+    if payload.get("context_item_id") and card_id.startswith("auto-context-"):
+        return True
+    if source_label == "Hermes context scanner":
+        return True
+    if summary.lower().startswith("hermes has this in its "):
+        return True
+    return False
+
+
+def card_relevance_score(card: Dict[str, Any], now: Optional[datetime] = None) -> float:
+    """Rank visible cards by usefulness at this moment."""
+    now = now or datetime.now(timezone.utc)
+    payload = _card_payload(card)
+    priority_weight = {"critical": 420, "high": 320, "medium": 210, "low": 100}
+    score = float(priority_weight.get(str(card.get("priority") or "medium"), 210))
+    if card.get("pinned") or card.get("status") == "pinned":
+        score += 1000
+    if card.get("status") == "stale":
+        score -= 140
+    if payload.get("ai_curated"):
+        score += 80
+    if card.get("source_label"):
+        score += 12
+    if card.get("why_shown"):
+        score += 12
+    try:
+        score += max(-100.0, min(150.0, float(payload.get("relevance_score") or 0)))
+    except (TypeError, ValueError):
+        pass
+
+    updated_at = parse_time(card.get("updated_at"))
+    if updated_at:
+        age_seconds = max(0.0, (now - updated_at).total_seconds())
+        if age_seconds < 30 * 60:
+            score += 70
+        elif age_seconds < 3 * 60 * 60:
+            score += 50
+        elif age_seconds < 12 * 60 * 60:
+            score += 30
+        elif age_seconds > 7 * 24 * 60 * 60:
+            score -= 30
+
+    valid_until = parse_time(card.get("valid_until"))
+    if valid_until:
+        seconds_until = (valid_until - now).total_seconds()
+        if 0 <= seconds_until <= 3 * 60 * 60:
+            score += 150
+        elif 0 <= seconds_until <= 24 * 60 * 60:
+            score += 80
+        elif seconds_until < 0:
+            score -= 120
+
+    domain = str(card.get("domain") or "")
+    local_hour = datetime.now().hour
+    local_weekday = datetime.now().weekday()
+    if 5 <= local_hour <= 10 and domain in {"news", "weather", "calendar", "family"}:
+        score += 35
+    if 9 <= local_hour <= 17 and domain in {"projects", "stocks", "calendar", "alerts"}:
+        score += 28
+    if 17 <= local_hour <= 22 and domain in {"planning", "family", "sports"}:
+        score += 28
+    if (local_weekday == 4 and local_hour >= 12) or local_weekday >= 5:
+        if domain in {"planning", "sports", "events"}:
+            score += 35
+    if domain in {"alerts", "weather", "calendar"} and str(payload.get("section") or "") == "now":
+        score += 22
+    return score
+
+
 def normalize_priority(value: Any) -> str:
     text = str(value or "medium").strip().lower()
     if text not in PRIORITIES:
@@ -570,6 +656,7 @@ def list_cards(
     status: Optional[str] = None,
     domain: Optional[str] = None,
     include_hidden: bool = False,
+    include_scanner: bool = False,
     limit: int = 200,
     conn: Optional[sqlite3.Connection] = None,
 ) -> List[Dict[str, Any]]:
@@ -588,6 +675,8 @@ def list_cards(
             clauses.append("domain = ?")
             params.append(slugify(domain, "general"))
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        requested_limit = max(1, min(int(limit), 500))
+        query_limit = 500 if not include_scanner else requested_limit
         rows = cx.execute(
             f"""
             SELECT * FROM cards
@@ -602,9 +691,16 @@ def list_cards(
                      updated_at DESC
             LIMIT ?
             """,
-            params + [max(1, min(int(limit), 500))],
+            params + [query_limit],
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        cards = [_row_to_dict(r) for r in rows]
+        if not include_scanner:
+            cards = [card for card in cards if not is_scanner_generated_card(card)]
+        now = datetime.now(timezone.utc)
+        for card in cards:
+            card["relevance_score"] = round(card_relevance_score(card, now), 3)
+        cards.sort(key=lambda card: (float(card.get("relevance_score") or 0), str(card.get("updated_at") or "")), reverse=True)
+        return cards[:requested_limit]
     finally:
         if own:
             cx.close()
@@ -758,7 +854,7 @@ def dashboard_status(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any
     try:
         prefs = get_preferences(cx)
         context_count = cx.execute("SELECT COUNT(*) AS count FROM context_items WHERE status != 'hidden'").fetchone()["count"]
-        card_count = cx.execute("SELECT COUNT(*) AS count FROM cards").fetchone()["count"]
+        card_count = len(list_cards(conn=cx))
         return {
             "mode": "autonomous",
             "requires_configuration": False,
@@ -1334,98 +1430,42 @@ def upsert_reflection_card(
     generated_count: int,
     conn: Optional[sqlite3.Connection] = None,
 ) -> Optional[Dict[str, Any]]:
-    existing = get_card("system-hermes-context-map", conn)
-    if existing and existing.get("status") == "dismissed":
-        return None
-
-    source_count = int(source_report.get("source_count") or 0)
-    if source_count == 0:
-        title = "Hermes dashboard is ready"
-        summary = (
-            "The plugin installed correctly and looked for Hermes memory, session history, "
-            "cron jobs, and cron output. No saved Hermes context was readable yet, so the "
-            "dashboard will fill in automatically as Hermes builds memory or runs jobs."
-        )
-    elif context_count == 0:
-        title = "Hermes context scan completed"
-        summary = (
-            f"Scanned {source_count} Hermes source(s), but did not find recurring, "
-            "dashboard-worthy context yet. The dashboard will keep watching as new Hermes "
-            "sessions, memory, or cron output appear."
-        )
-    else:
-        title = f"Hermes found {context_count} useful signal(s)"
-        summary = (
-            f"Scanned {source_count} Hermes source(s), inferred {context_count} useful "
-            f"context item(s), and updated {generated_count} dashboard card(s)."
-        )
-
-    return upsert_card(
-        {
-            "id": "system-hermes-context-map",
-            "domain": "system",
-            "title": title,
-            "summary": summary,
-            "detail_md": _source_report_detail(source_report),
-            "priority": "low",
-            "status": "active",
-            "source_label": "Hermes context scanner",
-            "why_shown": "Shows what the dashboard could read from Hermes.",
-            "payload": {
-                "section": "watching",
-                "system_card": True,
-                "auto_discovered": True,
-            },
-        },
-        conn,
-    )
+    del source_report, context_count, generated_count, conn
+    return None
 
 
 def sync_cards_from_context(items: Sequence[Dict[str, Any]], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        cards = []
-        for item in items[:24]:
-            if item.get("status") == "hidden":
-                continue
-            context_id = slugify(str(item.get("id") or ""), "context")
-            if not context_id:
-                continue
-            domain = slugify(str(item.get("domain") or "personal"), "personal")
-            summary = _clip_words(str(item.get("summary") or item.get("label") or ""), 260)
-            card = upsert_card(
-                {
-                    "id": f"auto-{context_id}",
-                    "context_id": context_id,
-                    "domain": domain,
-                    "title": _card_title_for_context(item),
-                    "summary": summary,
-                    "detail_md": _detail_for_context(item),
-                    "priority": _priority_for_context(item),
-                    "status": "active",
-                    "source_label": _source_label_for_context(item),
-                    "why_shown": "Auto-discovered from Hermes memory and session history.",
-                    "confidence": item.get("confidence"),
-                    "payload": {
-                        "section": DOMAIN_SECTIONS.get(domain, "watching"),
-                        "auto_discovered": True,
-                        "context_item_id": context_id,
-                    },
-                },
-                cx,
-            )
-            cards.append(card)
-        return {"cards": cards, "count": len(cards)}
-    finally:
-        if own:
-            cx.close()
+    del conn
+    return {"cards": [], "count": 0, "skipped_context_items": len([item for item in items if item.get("status") != "hidden"])}
+
+
+def suppress_scanner_cards(conn: sqlite3.Connection) -> int:
+    rows = conn.execute(
+        """
+        SELECT * FROM cards
+         WHERE status NOT IN ('dismissed', 'expired')
+        """
+    ).fetchall()
+    scanner_ids = []
+    for row in rows:
+        card = _row_to_dict(row)
+        if is_scanner_generated_card(card):
+            scanner_ids.append(card["id"])
+    if not scanner_ids:
+        return 0
+    placeholders = ", ".join("?" for _ in scanner_ids)
+    cur = conn.execute(
+        f"UPDATE cards SET status = 'dismissed', updated_at = ? WHERE id IN ({placeholders})",
+        [utc_now()] + scanner_ids,
+    )
+    conn.commit()
+    return int(cur.rowcount or 0)
 
 
 def refresh_from_hermes_context(
     include_sessions: bool = True,
     include_cron: bool = True,
-    create_cards: bool = True,
+    create_cards: bool = False,
     conn: Optional[sqlite3.Connection] = None,
 ) -> Dict[str, Any]:
     own = conn is None
@@ -1436,8 +1476,9 @@ def refresh_from_hermes_context(
         source_report = build_source_report(sources, include_sessions=include_sessions, include_cron=include_cron)
         items = infer_context_items(sources)
         saved_items = [upsert_context_item(item, cx) for item in items]
-        card_result = sync_cards_from_context(saved_items, cx) if create_cards else {"cards": [], "count": 0}
-        reflection_card = upsert_reflection_card(source_report, len(saved_items), card_result["count"], cx) if create_cards else None
+        suppressed = suppress_scanner_cards(cx)
+        card_result = sync_cards_from_context(saved_items, cx) if create_cards else {"cards": [], "count": 0, "skipped_context_items": len(saved_items)}
+        reflection_card = None
         cards = list(card_result["cards"])
         if reflection_card:
             cards.append(reflection_card)
@@ -1446,12 +1487,14 @@ def refresh_from_hermes_context(
             {
                 "job_key": "hermes-context-reflection",
                 "status": "success",
-                "summary": f"Scanned {len(sources)} Hermes source(s), inferred {len(saved_items)} context item(s), updated {len(cards)} card(s).",
+                "summary": f"Scanned {len(sources)} Hermes source(s), inferred {len(saved_items)} context signal(s), and suppressed {suppressed} raw scanner card(s).",
                 "started_at": started_at,
                 "payload": {
                     "source_count": len(sources),
                     "context_count": len(saved_items),
                     "card_count": len(cards),
+                    "scanner_cards_suppressed": suppressed,
+                    "cards_require_ai_curation": True,
                     "source_report": source_report,
                 },
             },
@@ -1462,6 +1505,7 @@ def refresh_from_hermes_context(
             "source_report": source_report,
             "context_items": saved_items,
             "cards": cards,
+            "scanner_cards_suppressed": suppressed,
             "refresh_run": run,
             "mode": "autonomous",
         }
@@ -1494,14 +1538,55 @@ def auto_refresh_if_needed(conn: sqlite3.Connection, max_age_seconds: int = 600)
             "source_report": prefs.get("last_source_report"),
             "mode": "autonomous",
         }
-    result = refresh_from_hermes_context(conn=conn)
+    result = refresh_from_hermes_context(conn=conn, create_cards=False)
     return {
         "refreshed": True,
         "sources": result["sources"],
         "source_report": result.get("source_report"),
         "context_count": len(result["context_items"]),
         "card_count": len(result["cards"]),
+        "scanner_cards_suppressed": result.get("scanner_cards_suppressed", 0),
         "mode": "autonomous",
+    }
+
+
+def dashboard_curation_status(
+    cards: Sequence[Dict[str, Any]],
+    context_items: Sequence[Dict[str, Any]],
+    source_report: Dict[str, Any],
+    automation: Dict[str, Any],
+) -> Dict[str, Any]:
+    curated_cards = [card for card in cards if not is_scanner_generated_card(card)]
+    context_count = len([item for item in context_items if item.get("status") != "hidden"])
+    source_count = int(source_report.get("source_count") or 0)
+    if curated_cards:
+        state = "active"
+        title = "Hermes-curated cards"
+        message = f"{len(curated_cards)} useful card(s) are ranked by priority, freshness, and time relevance."
+    elif context_count:
+        state = "needs_ai_curation"
+        title = "Signals found, cards not curated yet"
+        message = (
+            f"Hermes found {context_count} relevance signal(s). A Hermes refresh job should turn the best "
+            "signals into concise cards with current data and provenance."
+        )
+    elif source_count:
+        state = "watching"
+        title = "Hermes context scanned"
+        message = "Readable Hermes sources exist, but no durable dashboard signals were found yet."
+    else:
+        state = "empty"
+        title = "Waiting for Hermes context"
+        message = "No readable Hermes memory, session history, or cron output was found yet."
+    return {
+        "state": state,
+        "title": title,
+        "message": message,
+        "curated_card_count": len(curated_cards),
+        "context_count": context_count,
+        "source_count": source_count,
+        "last_auto_refresh_at": automation.get("last_auto_refresh_at"),
+        "scanner_cards_suppressed": automation.get("scanner_cards_suppressed", 0),
     }
 
 
@@ -1509,18 +1594,23 @@ def dashboard_snapshot(auto_refresh: bool = True) -> Dict[str, Any]:
     cx = connect()
     try:
         automation = auto_refresh_if_needed(cx) if auto_refresh else {"refreshed": False, "mode": "autonomous"}
+        suppressed = suppress_scanner_cards(cx)
+        if suppressed:
+            automation["scanner_cards_suppressed"] = int(automation.get("scanner_cards_suppressed") or 0) + suppressed
         source_report = automation.get("source_report")
         if not source_report:
             source_report = get_preferences(cx).get("last_source_report") or build_source_report(collect_hermes_sources())
         cards = list_cards(conn=cx)
+        context_items = list_context_items(conn=cx)
         return {
             "cards": cards,
-            "context_items": list_context_items(conn=cx),
+            "context_items": context_items,
             "preferences": get_preferences(cx),
             "refresh_runs": list_refresh_runs(25, cx),
             "status": dashboard_status(cx),
             "automation": automation,
             "source_report": source_report,
+            "curation": dashboard_curation_status(cards, context_items, source_report, automation),
         }
     finally:
         cx.close()

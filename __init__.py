@@ -14,10 +14,11 @@ def _cron_prompt(kind: str) -> str:
     base = (
         "Use the hermes-personal-dashboard:briefing-curator skill. "
         "Start with personal_dashboard_refresh_from_hermes so the dashboard reflects "
-        "existing Hermes memory, sessions, cron output, and prior agent work without "
+        "existing Hermes memory, sessions, cron output, and prior agent work as relevance signals without "
         "requiring user setup. Then read personal_dashboard_list_context and use the "
-        "available Hermes tools to refresh useful live cards for the inferred context. "
-        "Write structured cards with personal_dashboard_upsert_card and record the run "
+        "available Hermes tools to refresh useful live cards for the inferred context. Do not turn raw "
+        "scanner lines, prompts, schedules, or memory-write JSON into cards. Write structured AI-curated "
+        "cards with personal_dashboard_upsert_card and record the run "
         "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
@@ -140,6 +141,7 @@ def _handle_list_cards(params: Dict[str, Any]) -> Any:
         status=params.get("status"),
         domain=params.get("domain"),
         include_hidden=bool(params.get("include_hidden", False)),
+        include_scanner=bool(params.get("include_scanner", False)),
         limit=int(params.get("limit") or 200),
     )
 
@@ -181,7 +183,7 @@ def _handle_refresh_from_hermes(params: Dict[str, Any]) -> Any:
     return core.refresh_from_hermes_context(
         include_sessions=bool(params.get("include_sessions", True)),
         include_cron=bool(params.get("include_cron", True)),
-        create_cards=bool(params.get("create_cards", True)),
+        create_cards=bool(params.get("create_cards", False)),
     )
 
 
@@ -241,12 +243,13 @@ def _handle_slash(raw_args: str) -> str:
                 f"  db: {core.db_path()}"
             )
         if sub == "refresh":
-            result = core.refresh_from_hermes_context()
+            result = core.refresh_from_hermes_context(create_cards=False)
             return (
                 "Hermes Personal Dashboard refreshed from Hermes context.\n"
                 f"  sources scanned: {result['sources']}\n"
                 f"  inferred context: {len(result['context_items'])}\n"
-                f"  cards updated: {len(result['cards'])}"
+                f"  cards updated: {len(result['cards'])} curated\n"
+                f"  scanner cards suppressed: {result.get('scanner_cards_suppressed', 0)}"
             )
         if sub == "context":
             items = core.list_context_items(limit=12)

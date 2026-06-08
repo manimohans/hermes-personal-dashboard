@@ -20,7 +20,7 @@ INSECURE=0
 SKIP_BUILD=0
 RUN_DOCTOR=0
 START_SERVER=1
-WITH_PLUGIN=0
+WITH_PLUGIN=1
 ENABLE_PLUGIN=1
 REMOVE_EXISTING=0
 UNINSTALL_ONLY=0
@@ -50,8 +50,9 @@ Install:
   --remove-existing      Stop and remove an existing install before installing.
   --uninstall            Stop and remove existing install, then exit.
   --copy                 Copy this checkout instead of symlinking when run locally.
-  --with-plugin          Also install optional Hermes plugin/tool bundle.
-  --no-enable            With --with-plugin, do not run `hermes plugins enable`.
+  --with-plugin          Install Hermes plugin/tool bundle. Default behavior.
+  --no-plugin            Skip Hermes plugin/tool bundle install.
+  --no-enable            Do not run `hermes plugins enable`.
   --no-update            Do not git pull an existing cloned install.
 
 Run:
@@ -83,6 +84,7 @@ while [ $# -gt 0 ]; do
     --uninstall) REMOVE_EXISTING=1; UNINSTALL_ONLY=1 ;;
     --copy) COPY_MODE=1 ;;
     --with-plugin) WITH_PLUGIN=1 ;;
+    --no-plugin) WITH_PLUGIN=0 ;;
     --no-enable) ENABLE_PLUGIN=0 ;;
     --no-update) UPDATE_INSTALL=0 ;;
     --foreground) FOREGROUND=1 ;;
@@ -250,7 +252,7 @@ install_plugin_link() {
     fi
   fi
   ln -s "${APP_TARGET}" "${PLUGIN_TARGET}"
-  echo "Installed optional Hermes plugin link at ${PLUGIN_TARGET}"
+  echo "Installed Hermes plugin/tool link at ${PLUGIN_TARGET}"
   if command -v hermes >/dev/null 2>&1 && [ "${ENABLE_PLUGIN}" -eq 1 ]; then
     hermes plugins enable "${APP_NAME}" || true
   fi

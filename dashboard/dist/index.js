@@ -86,7 +86,7 @@
       "Dashboard API is unreachable.",
       requestMethod(options) + " " + apiUrl(path),
       "Browser error: " + ((err && err.message) || String(err)),
-      "Hint: make sure the standalone server is running and that you opened the dashboard on the same host and port printed by install.sh."
+      "Hint: make sure the standalone server is running and that you opened the dashboard on the same host and port printed by run.sh."
     ].join("\n"));
   }
 
@@ -118,6 +118,22 @@
     if (["news", "daily", "daycare", "family"].indexOf(card.domain) >= 0) return "today";
     if (["planning", "sports", "events"].indexOf(card.domain) >= 0) return "week";
     return "watching";
+  }
+
+  function isScannerCard(card) {
+    const payload = card.payload || {};
+    if (payload.ai_curated || payload.user_curated || payload.keep_visible) return false;
+    if (payload.scanner_generated || payload.system_card) return true;
+    const id = String(card.id || "");
+    const summary = String(card.summary || "").toLowerCase();
+    if (id === "system-hermes-context-map") return true;
+    if (payload.context_item_id && id.indexOf("auto-context-") === 0) return true;
+    if (card.source_label === "Hermes context scanner") return true;
+    return summary.indexOf("hermes has this in its ") === 0;
+  }
+
+  function visibleCards(cards) {
+    return (cards || []).filter(function (card) { return !isScannerCard(card); });
   }
 
   function Button(props) {
@@ -154,10 +170,10 @@
     let detail = "";
     if (props.mutating) {
       title = "Updating dashboard";
-      detail = "Refreshing Hermes context, cards, freshness, and source coverage.";
+      detail = "Refreshing Hermes signals, curated cards, freshness, and source coverage.";
     } else if (props.loading && !snapshot) {
-      title = "Reading Hermes context";
-      detail = "Scanning memory, sessions, cron output, and existing dashboard cards.";
+      title = "Reading Hermes signals";
+      detail = "Scanning memory, sessions, cron output, and existing curated cards.";
     } else if (props.loading) {
       title = "Checking for new Hermes context";
       detail = "Refreshing the dashboard snapshot and stale-card status.";
@@ -238,24 +254,27 @@
     );
   }
 
-  function ReflectionPanel(props) {
+  function CurationPanel(props) {
     const automation = props.automation || {};
+    const curation = props.curation || {};
     const contextCount = (props.contextItems || []).length;
     const cardCount = (props.cards || []).length;
     const refreshed = automation.refreshed ? "Scanned just now" : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
     return h("section", { className: "hpd-start" },
       h("div", { className: "hpd-start-copy" },
-        h("p", { className: "hpd-eyebrow" }, "Zero setup"),
-        h("h2", null, "Reflecting Hermes context"),
+        h("p", { className: "hpd-eyebrow" }, "AI curated"),
+        h("h2", null, curation.title || "Hermes-curated dashboard"),
+        h("p", { className: "hpd-start-message" }, curation.message || "Useful cards appear here after Hermes curates the inferred signals."),
         h("div", { className: "hpd-checklist" },
           h("span", { className: cx("hpd-checkitem", "is-done") }, h("span", { className: "hpd-checkmark" }, "OK"), "No configuration"),
-          h("span", { className: cx("hpd-checkitem", contextCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, contextCount > 0 ? "OK" : "-"), contextCount + " inferred"),
-          h("span", { className: cx("hpd-checkitem", cardCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, cardCount > 0 ? "OK" : "-"), cardCount + " cards"),
+          h("span", { className: cx("hpd-checkitem", contextCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, contextCount > 0 ? "OK" : "-"), contextCount + " signals"),
+          h("span", { className: cx("hpd-checkitem", cardCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, cardCount > 0 ? "OK" : "-"), cardCount + " curated cards"),
+          curation.scanner_cards_suppressed ? h("span", { className: cx("hpd-checkitem", "is-done") }, h("span", { className: "hpd-checkmark" }, "OK"), curation.scanner_cards_suppressed + " logs hidden") : null,
           h("span", { className: "hpd-checkitem" }, h("span", { className: "hpd-checkmark" }, "-"), refreshed)
         )
       ),
       h("div", { className: "hpd-start-actions" },
-        h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan Hermes now"),
+        h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan signals"),
         h(Button, { variant: "secondary", onClick: props.onCreateCron }, "Create refresh jobs")
       )
     );
@@ -263,27 +282,24 @@
 
   function ContextPanel(props) {
     const items = props.items || [];
-    return h("section", { className: "hpd-section hpd-activity" },
+    return h("section", { className: "hpd-section hpd-side-panel" },
       h("div", { className: "hpd-section-head" },
-        h("h2", null, "Inferred Context"),
+        h("h2", null, "Signals"),
         h(Badge, null, String(items.length))
       ),
-      h("div", { className: "hpd-activity-grid" },
-        h("div", { className: "hpd-panel" },
-          h("h3", null, "What Hermes appears to care about"),
-          items.length ? items.slice(0, 12).map(function (item) {
-            const sources = (item.source_types || []).join(", ");
-            return h("div", { key: item.id, className: "hpd-context" },
-              h("div", null,
-                h("strong", null, (item.domain || "personal") + ": " + item.label),
-                h("p", null, (item.summary || "Inferred from Hermes context.") + (sources ? " Sources: " + sources + "." : ""))
-              ),
-              h("div", { className: "hpd-inline-actions" },
-                h(Button, { variant: "ghost", onClick: function () { props.onHideContext(item.id); } }, "Hide")
-              )
-            );
-          }) : h("div", { className: "hpd-empty" }, "No Hermes memory, session, or cron context found yet. This fills in automatically as Hermes works.")
-        )
+      h("div", { className: "hpd-panel hpd-signal-list" },
+        items.length ? items.slice(0, 10).map(function (item) {
+          const sources = (item.source_types || []).join(", ");
+          return h("div", { key: item.id, className: "hpd-context" },
+            h("div", null,
+              h("strong", null, (item.domain || "personal") + ": " + item.label),
+              h("p", null, sources ? "Sources: " + sources + "." : (item.summary || "Inferred from Hermes context."))
+            ),
+            h("div", { className: "hpd-inline-actions" },
+              h(Button, { variant: "ghost", onClick: function () { props.onHideContext(item.id); } }, "Hide")
+            )
+          );
+        }) : h("div", { className: "hpd-empty" }, "No Hermes signals found yet.")
       )
     );
   }
@@ -320,7 +336,7 @@
 
   function Activity(props) {
     const runs = props.runs || [];
-    return h("section", { className: "hpd-section hpd-activity" },
+    return h("section", { className: "hpd-section hpd-activity hpd-side-panel" },
       h("div", { className: "hpd-section-head" }, h("h2", null, "Hermes Activity")),
       h("div", { className: "hpd-activity-grid" },
         h("div", { className: "hpd-panel" },
@@ -337,6 +353,48 @@
         ),
         h(SourceCoverage, { report: props.sourceReport || {} })
       )
+    );
+  }
+
+  function EmptyMain(props) {
+    const curation = props.curation || {};
+    return h("section", { className: "hpd-section hpd-main-empty" },
+      h("div", { className: "hpd-section-head" },
+        h("h2", null, "Cards"),
+        h(Badge, null, "0")
+      ),
+      h("div", { className: "hpd-empty" },
+        h("strong", null, curation.title || "No curated cards yet"),
+        h("p", null, curation.message || "Hermes has not written any dashboard cards yet.")
+      )
+    );
+  }
+
+  function MainSections(props) {
+    const grouped = props.grouped;
+    const total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
+    if (!total) return h(EmptyMain, { curation: props.curation });
+    return h("div", { className: "hpd-sections" },
+      grouped.now.length ? h(CardSection, Object.assign({
+        title: "Now",
+        cards: grouped.now,
+        empty: "No urgent Hermes-curated cards.",
+      }, props.cardActions)) : null,
+      grouped.today.length ? h(CardSection, Object.assign({
+        title: "Today",
+        cards: grouped.today,
+        empty: "No daily Hermes-curated cards.",
+      }, props.cardActions)) : null,
+      grouped.week.length ? h(CardSection, Object.assign({
+        title: "This Week",
+        cards: grouped.week,
+        empty: "No weekly Hermes-curated cards.",
+      }, props.cardActions)) : null,
+      grouped.watching.length ? h(CardSection, Object.assign({
+        title: "Watching",
+        cards: grouped.watching,
+        empty: "No long-running Hermes-curated watches.",
+      }, props.cardActions)) : null
     );
   }
 
@@ -378,8 +436,9 @@
         .finally(function () { setMutating(false); });
     }
 
-    const cards = snapshot ? (snapshot.cards || []) : [];
+    const cards = snapshot ? visibleCards(snapshot.cards || []) : [];
     const contextItems = snapshot ? (snapshot.context_items || []) : [];
+    const curation = snapshot ? (snapshot.curation || {}) : {};
     const grouped = { now: [], today: [], week: [], watching: [] };
     cards.forEach(function (card) {
       const key = sectionFor(card);
@@ -407,49 +466,39 @@
       h(SyncStatus, { snapshot: snapshot, loading: loading, mutating: mutating }),
       error ? h(ErrorPanel, { message: error }) : null,
       snapshot ? h(React.Fragment, null,
-        h(ReflectionPanel, {
+        h(CurationPanel, {
           automation: snapshot.automation || {},
+          curation: curation,
           contextItems: contextItems,
           cards: cards,
           loading: mutating,
           onScanNow: function () {
             mutate(request("/context/refresh", {
               method: "POST",
-              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: true }),
+              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false }),
             }));
           },
           onCreateCron: function () { mutate(request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) })); },
         }),
-        h("div", { className: "hpd-sections" },
-          h(CardSection, Object.assign({
-            title: "Now",
-            cards: grouped.now,
-            empty: "No urgent Hermes-derived cards.",
-          }, cardActions)),
-          h(CardSection, Object.assign({
-            title: "Today",
-            cards: grouped.today,
-            empty: "No daily Hermes-derived cards.",
-          }, cardActions)),
-          h(CardSection, Object.assign({
-            title: "This Week",
-            cards: grouped.week,
-            empty: "No weekly Hermes-derived cards.",
-          }, cardActions)),
-          h(CardSection, Object.assign({
-            title: "Watching",
-            cards: grouped.watching,
-            empty: "No long-running Hermes-derived watches.",
-          }, cardActions))
-        ),
-        h(ContextPanel, {
-          items: contextItems,
-          onHideContext: function (id) { mutate(request("/context/" + encodeURIComponent(id) + "/hide", { method: "POST" })); },
-        }),
-        h(Activity, {
-          runs: snapshot.refresh_runs || [],
-          sourceReport: snapshot.source_report || {},
-        })
+        h("div", { className: "hpd-dashboard-grid" },
+          h("div", { className: "hpd-main-column" },
+            h(MainSections, {
+              grouped: grouped,
+              curation: curation,
+              cardActions: cardActions,
+            })
+          ),
+          h("aside", { className: "hpd-side-rail" },
+            h(ContextPanel, {
+              items: contextItems,
+              onHideContext: function (id) { mutate(request("/context/" + encodeURIComponent(id) + "/hide", { method: "POST" })); },
+            }),
+            h(Activity, {
+              runs: snapshot.refresh_runs || [],
+              sourceReport: snapshot.source_report || {},
+            })
+          )
+        )
       ) : null
     );
   }

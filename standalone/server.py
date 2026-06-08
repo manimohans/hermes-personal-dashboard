@@ -29,10 +29,11 @@ def cron_prompt(kind: str) -> str:
     base = (
         "Use the hermes-personal-dashboard:briefing-curator skill. "
         "Start with personal_dashboard_refresh_from_hermes so the dashboard reflects "
-        "existing Hermes memory, sessions, cron output, and prior agent work without "
+        "existing Hermes memory, sessions, cron output, and prior agent work as relevance signals without "
         "requiring user setup. Then read personal_dashboard_list_context and use the "
-        "available Hermes tools to refresh useful live cards for the inferred context. "
-        "Write structured cards with personal_dashboard_upsert_card and record the run "
+        "available Hermes tools to refresh useful live cards for the inferred context. Do not turn raw "
+        "scanner lines, prompts, schedules, or memory-write JSON into cards. Write structured AI-curated "
+        "cards with personal_dashboard_upsert_card and record the run "
         "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
@@ -200,7 +201,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(core.dashboard_snapshot(auto_refresh=auto_refresh))
                 return
             if method == "GET" and rel == "cards":
-                self.send_json({"cards": core.list_cards()})
+                self.send_json({"cards": core.list_cards(
+                    status=(query.get("status") or [None])[0],
+                    domain=(query.get("domain") or [None])[0],
+                    include_hidden=(query.get("include_hidden") or ["false"])[0].lower() in {"1", "true", "yes"},
+                    include_scanner=(query.get("include_scanner") or ["false"])[0].lower() in {"1", "true", "yes"},
+                    limit=int((query.get("limit") or ["200"])[0]),
+                )})
                 return
             if method == "GET" and rel == "context":
                 self.send_json({"context_items": core.list_context_items()})
@@ -216,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(core.refresh_from_hermes_context(
                     include_sessions=bool(body.get("include_sessions", True)),
                     include_cron=bool(body.get("include_cron", True)),
-                    create_cards=bool(body.get("create_cards", True)),
+                    create_cards=bool(body.get("create_cards", False)),
                 ))
                 return
             if method == "POST" and rel in {"automation/ensure-jobs", "automation/create-cron-jobs"}:

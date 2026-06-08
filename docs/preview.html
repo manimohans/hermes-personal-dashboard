@@ -73,60 +73,46 @@
       var state = {
         cards: [
           {
-            id: "system-hermes-context-map",
-            domain: "system",
-            title: "Hermes found 3 useful signals",
-            summary: "Scanned 4 mocked Hermes sources, inferred 3 useful context items, and updated 3 dashboard cards.",
-            detail_md: "Readable Hermes sources:\n- memory: 1 (MEMORY.md)\n- session: 2 (state.db:messages)\n- cron_job: 1 (cron/jobs.json)\n\nSource checks:\n- memory files: 1 found\n- state.db: found\n- cron jobs: found\n- cron output files: 0",
-            priority: "low",
-            status: "active",
-            pinned: false,
-            updated_at: now,
-            source_label: "Hermes context scanner",
-            why_shown: "Shows what the dashboard could read from Hermes.",
-            payload: { section: "watching", system_card: true, auto_discovered: true }
-          },
-          {
-            id: "auto-context-news-ai",
+            id: "news-ai-briefing",
             context_id: "context-news-ai",
             domain: "news",
             title: "AI news briefing",
-            summary: "Hermes inferred that AI news belongs in the morning briefing from memory and prior sessions.",
+            summary: "Three high-signal AI updates are worth checking this morning; routine funding and model-wrapper noise stayed out.",
             priority: "medium",
             status: "active",
             pinned: false,
             updated_at: now,
-            source_label: "Hermes memory, Hermes sessions",
-            why_shown: "Auto-discovered from Hermes memory and session history.",
-            payload: { section: "today", auto_discovered: true, context_item_id: "context-news-ai" }
+            source_label: "Hermes memory + morning news refresh",
+            why_shown: "Hermes inferred AI news belongs in the morning brief.",
+            payload: { section: "today", ai_curated: true, relevance_score: 42 }
           },
           {
-            id: "auto-context-weather-local",
+            id: "weather-local-now",
             context_id: "context-weather-local",
             domain: "weather",
-            title: "Local weather watch",
-            summary: "Hermes found weather and weekend planning references, so weather-impacting cards appear in Now.",
-            priority: "medium",
+            title: "Weather can affect today",
+            summary: "The current forecast is relevant enough to keep in Now because Hermes has weather and planning signals.",
+            priority: "high",
             status: "active",
             pinned: false,
             updated_at: now,
-            source_label: "Hermes memory",
-            why_shown: "Auto-discovered from Hermes memory and session history.",
-            payload: { section: "now", auto_discovered: true, context_item_id: "context-weather-local" }
+            source_label: "Hermes memory + weather refresh",
+            why_shown: "Hermes found weather and planning context.",
+            payload: { section: "now", ai_curated: true, relevance_score: 55 }
           },
           {
-            id: "auto-context-projects-github",
+            id: "projects-github-watch",
             context_id: "context-projects-github",
             domain: "projects",
             title: "GitHub issue work",
-            summary: "Hermes session history points to recurring project and GitHub issue follow-up.",
+            summary: "A recurring project/GitHub thread is still worth watching; no urgent issue is promoted to Now.",
             priority: "low",
             status: "active",
             pinned: false,
             updated_at: now,
             source_label: "Hermes sessions",
-            why_shown: "Auto-discovered from Hermes memory and session history.",
-            payload: { section: "watching", auto_discovered: true, context_item_id: "context-projects-github" }
+            why_shown: "Hermes sees repeated GitHub issue/project work.",
+            payload: { section: "watching", ai_curated: true, relevance_score: 15 }
           }
         ],
         context_items: [
@@ -179,7 +165,7 @@
             id: 1,
             job_key: "hermes-context-reflection",
             status: "success",
-            summary: "Scanned mocked Hermes memory and sessions, inferred 3 context items, updated 3 cards.",
+            summary: "Scanned mocked Hermes memory and sessions, inferred 3 context signals.",
             started_at: now
           }
         ],
@@ -189,6 +175,16 @@
           context_count: 3,
           card_count: 3,
           mode: "autonomous"
+        },
+        curation: {
+          state: "active",
+          title: "Hermes-curated cards",
+          message: "3 useful card(s) are ranked by priority, freshness, and time relevance.",
+          curated_card_count: 3,
+          context_count: 3,
+          source_count: 4,
+          last_auto_refresh_at: now,
+          scanner_cards_suppressed: 0
         }
       };
 
@@ -211,7 +207,8 @@
             preferences: state.preferences,
             db_path: "preview/cards.db"
           },
-          automation: state.automation
+          automation: state.automation,
+          curation: state.curation
         });
       }
 
@@ -234,20 +231,6 @@
             confidence: 0.73,
             score: 1.6
           });
-          state.cards.push({
-            id: "auto-" + scanId,
-            context_id: scanId,
-            domain: "family",
-            title: "Daycare lunch and daily summary",
-            summary: "Hermes inferred this family/school item from session history and will keep it in Today.",
-            priority: "medium",
-            status: "active",
-            pinned: false,
-            updated_at: new Date().toISOString(),
-            source_label: "Hermes sessions",
-            why_shown: "Auto-discovered from Hermes memory and session history.",
-            payload: { section: "today", auto_discovered: true, context_item_id: scanId }
-          });
         }
         state.automation = {
           refreshed: true,
@@ -256,20 +239,22 @@
           card_count: state.cards.length,
           mode: "autonomous"
         };
+        state.curation = {
+          state: "active",
+          title: "Hermes-curated cards",
+          message: state.cards.length + " useful card(s) are ranked by priority, freshness, and time relevance. One new signal is waiting for the next curator refresh.",
+          curated_card_count: state.cards.length,
+          context_count: state.context_items.length,
+          source_count: 5,
+          last_auto_refresh_at: new Date().toISOString(),
+          scanner_cards_suppressed: 0
+        };
         state.source_report = {
           source_count: 5,
           by_type: { memory: 1, session: 3, cron_job: 1 },
           labels_by_type: { memory: ["MEMORY.md"], session: ["state.db:messages"], cron_job: ["cron/jobs.json"] },
           checks: state.source_report.checks
         };
-        state.cards = state.cards.map(function (card) {
-          if (card.id !== "system-hermes-context-map") return card;
-          return Object.assign({}, card, {
-            title: "Hermes found 4 useful signals",
-            summary: "Scanned 5 mocked Hermes sources, inferred 4 useful context items, and updated 4 dashboard cards.",
-            updated_at: new Date().toISOString()
-          });
-        });
         state.refresh_runs.unshift({
           id: state.refresh_runs.length + 1,
           job_key: "hermes-context-reflection",
@@ -280,7 +265,8 @@
         return {
           sources: 5,
           context_items: state.context_items,
-          cards: state.cards,
+          cards: [],
+          scanner_cards_suppressed: 0,
           mode: "autonomous"
         };
       }

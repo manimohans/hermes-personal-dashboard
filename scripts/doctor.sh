@@ -144,10 +144,10 @@ else
 fi
 
 if [ -e "${PLUGIN_TARGET}" ]; then
-  ok "optional Hermes plugin install exists at ${PLUGIN_TARGET}"
+  ok "Hermes plugin/tool install exists at ${PLUGIN_TARGET}"
 else
-  warn "optional Hermes plugin is not installed at ${PLUGIN_TARGET}"
-  echo "     Optional: ./run.sh --with-plugin"
+  warn "Hermes plugin/tool bundle is not installed at ${PLUGIN_TARGET}"
+  echo "     Run: ./run.sh"
 fi
 
 echo

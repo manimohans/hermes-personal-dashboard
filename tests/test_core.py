@@ -113,7 +113,7 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(run["status"], "success")
         self.assertEqual(len(core.list_refresh_runs(conn=self.conn)), 1)
 
-    def test_refresh_from_hermes_context_creates_visible_cards(self) -> None:
+    def test_refresh_from_hermes_context_creates_signals_not_visible_cards(self) -> None:
         memory_dir = Path(self.tmp.name) / "memories"
         memory_dir.mkdir(parents=True)
         (memory_dir / "MEMORY.md").write_text(
@@ -130,15 +130,12 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(result["sources"], 1)
         self.assertGreaterEqual(len(result["context_items"]), 3)
         cards = core.list_cards(conn=self.conn)
-        domains = {card["domain"] for card in cards}
-        self.assertIn("news", domains)
-        self.assertIn("stocks", domains)
-        self.assertIn("planning", domains)
-        self.assertTrue(all((card.get("payload") or {}).get("auto_discovered") for card in cards))
+        self.assertEqual(cards, [])
+        self.assertEqual(result["cards"], [])
         self.assertEqual(result["source_report"]["source_count"], 1)
         self.assertIn("memory", result["source_report"]["by_type"])
 
-    def test_refresh_with_no_sources_creates_ready_card(self) -> None:
+    def test_refresh_with_no_sources_creates_no_visible_cards(self) -> None:
         result = core.refresh_from_hermes_context(
             include_sessions=False,
             include_cron=False,
@@ -148,12 +145,10 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(result["sources"], 0)
         self.assertEqual(len(result["context_items"]), 0)
         cards = core.list_cards(conn=self.conn)
-        self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["id"], "system-hermes-context-map")
-        self.assertIn("ready", cards[0]["title"].lower())
+        self.assertEqual(cards, [])
         self.assertEqual(result["source_report"]["source_count"], 0)
 
-    def test_hide_context_dismisses_generated_card(self) -> None:
+    def test_legacy_scanner_cards_are_hidden_from_visible_cards(self) -> None:
         item = core.upsert_context_item(
             {
                 "id": "context-news-ai",
@@ -165,8 +160,20 @@ class CoreTest(unittest.TestCase):
             },
             self.conn,
         )
-        core.sync_cards_from_context([item], self.conn)
-        self.assertEqual(len(core.list_cards(conn=self.conn)), 1)
+        core.upsert_card(
+            {
+                "id": "auto-context-news-ai",
+                "context_id": item["id"],
+                "domain": "news",
+                "title": "AI news briefing",
+                "summary": "Hermes has this in its memory history: User wants AI news.",
+                "payload": {"auto_discovered": True, "context_item_id": item["id"]},
+            },
+            self.conn,
+        )
+        self.assertEqual(len(core.list_cards(conn=self.conn)), 0)
+        self.assertEqual(len(core.list_cards(include_scanner=True, conn=self.conn)), 1)
+        self.assertEqual(core.suppress_scanner_cards(self.conn), 1)
         hidden = core.hide_context_item(item["id"], self.conn)
         self.assertEqual(hidden["status"], "hidden")
         self.assertEqual(len(core.list_cards(conn=self.conn)), 0)
@@ -180,7 +187,35 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(snapshot["status"]["mode"], "autonomous")
         self.assertIn("source_report", snapshot)
         self.assertGreaterEqual(len(snapshot["context_items"]), 1)
-        self.assertGreaterEqual(len(snapshot["cards"]), 1)
+        self.assertEqual(len(snapshot["cards"]), 0)
+        self.assertEqual(snapshot["curation"]["state"], "needs_ai_curation")
+
+    def test_curated_cards_rank_above_low_fresh_cards(self) -> None:
+        core.upsert_card(
+            {
+                "id": "routine",
+                "domain": "news",
+                "title": "Routine",
+                "summary": "A routine item.",
+                "priority": "low",
+                "payload": {"ai_curated": True, "section": "today"},
+            },
+            self.conn,
+        )
+        core.upsert_card(
+            {
+                "id": "important",
+                "domain": "alerts",
+                "title": "Important",
+                "summary": "A high priority item.",
+                "priority": "high",
+                "payload": {"ai_curated": True, "section": "now", "relevance_score": 50},
+            },
+            self.conn,
+        )
+        cards = core.list_cards(conn=self.conn)
+        self.assertEqual(cards[0]["id"], "important")
+        self.assertIn("relevance_score", cards[0])
 
 
 if __name__ == "__main__":

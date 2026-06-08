@@ -79,7 +79,7 @@ class PluginRegistrationTest(unittest.TestCase):
         self.assertIn("personal-dashboard", self.ctx.commands)
         self.assertIn("briefing-curator", self.ctx.skills)
 
-    def test_refresh_from_memory_creates_context_and_cards(self) -> None:
+    def test_refresh_from_memory_creates_context_not_scanner_cards(self) -> None:
         memory_dir = Path(self.tmp.name) / "memories"
         memory_dir.mkdir(parents=True)
         (memory_dir / "MEMORY.md").write_text(
@@ -91,7 +91,7 @@ class PluginRegistrationTest(unittest.TestCase):
             {"include_sessions": False, "include_cron": False, "create_cards": True},
         )
         self.assertGreaterEqual(len(data["context_items"]), 1)
-        self.assertGreaterEqual(len(data["cards"]), 1)
+        self.assertEqual(len(data["cards"]), 0)
         domains = {item["domain"] for item in data["context_items"]}
         self.assertIn("news", domains)
         self.assertIn("stocks", domains)
@@ -120,6 +120,7 @@ class PluginRegistrationTest(unittest.TestCase):
         self.assertIn("refreshed from Hermes context", message)
         self.assertIn("sources scanned:", message)
         self.assertIn("cards updated:", message)
+        self.assertIn("scanner cards suppressed:", message)
 
     def test_slash_status_shows_source_coverage(self) -> None:
         memory_dir = Path(self.tmp.name) / "memories"

@@ -129,7 +129,7 @@
       "Dashboard API is unreachable.",
       requestMethod(options) + " " + apiUrl(path),
       "Browser error: " + ((err && err.message) || String(err)),
-      "Hint: make sure the standalone server is running and that you opened the dashboard on the same host and port printed by install.sh."
+      "Hint: make sure the standalone server is running and that you opened the dashboard on the same host and port printed by run.sh."
     ].join("\n"));
   }
 
@@ -148,6 +148,22 @@
     if (["news", "daily", "daycare", "family"].indexOf(card.domain) >= 0) return "today";
     if (["planning", "sports", "events"].indexOf(card.domain) >= 0) return "week";
     return "watching";
+  }
+
+  function isScannerCard(card) {
+    var payload = card.payload || {};
+    if (payload.ai_curated || payload.user_curated || payload.keep_visible) return false;
+    if (payload.scanner_generated || payload.system_card) return true;
+    var id = String(card.id || "");
+    var summary = String(card.summary || "").toLowerCase();
+    if (id === "system-hermes-context-map") return true;
+    if (payload.context_item_id && id.indexOf("auto-context-") === 0) return true;
+    if (card.source_label === "Hermes context scanner") return true;
+    return summary.indexOf("hermes has this in its ") === 0;
+  }
+
+  function visibleCards(cards) {
+    return (cards || []).filter(function (card) { return !isScannerCard(card); });
   }
 
   function button(label, variant, handler, disabled) {
@@ -177,10 +193,10 @@
     var detail = "";
     if (state.mutating) {
       title = "Updating dashboard";
-      detail = "Refreshing Hermes context, cards, freshness, and source coverage.";
+      detail = "Refreshing Hermes signals, curated cards, freshness, and source coverage.";
     } else if (state.loading && !snapshot) {
-      title = "Reading Hermes context";
-      detail = "Scanning memory, sessions, cron output, and existing dashboard cards.";
+      title = "Reading Hermes signals";
+      detail = "Scanning memory, sessions, cron output, and existing curated cards.";
     } else if (state.loading) {
       title = "Checking for new Hermes context";
       detail = "Refreshing the dashboard snapshot and stale-card status.";
@@ -281,30 +297,33 @@
     );
   }
 
-  function reflectionPanel(snapshot, cards, contextItems) {
+  function curationPanel(snapshot, cards, contextItems) {
     var automation = snapshot.automation || {};
+    var curation = snapshot.curation || {};
     var refreshed = automation.refreshed
       ? "Scanned just now"
       : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
     return el("section", { className: "hpd-start" },
       el("div", { className: "hpd-start-copy" },
-        el("p", { className: "hpd-eyebrow", text: "Zero setup" }),
-        el("h2", { text: "Reflecting Hermes context" }),
+        el("p", { className: "hpd-eyebrow", text: "AI curated" }),
+        el("h2", { text: curation.title || "Hermes-curated dashboard" }),
+        el("p", { className: "hpd-start-message", text: curation.message || "Useful cards appear here after Hermes curates the inferred signals." }),
         el("div", { className: "hpd-checklist" },
           checkItem("OK", "No configuration", true),
-          checkItem(contextItems.length > 0 ? "OK" : "-", contextItems.length + " inferred", contextItems.length > 0),
-          checkItem(cards.length > 0 ? "OK" : "-", cards.length + " cards", cards.length > 0),
+          checkItem(contextItems.length > 0 ? "OK" : "-", contextItems.length + " signals", contextItems.length > 0),
+          checkItem(cards.length > 0 ? "OK" : "-", cards.length + " curated cards", cards.length > 0),
+          curation.scanner_cards_suppressed ? checkItem("OK", curation.scanner_cards_suppressed + " logs hidden", true) : null,
           checkItem("-", refreshed, false)
         )
       ),
       el("div", { className: "hpd-start-actions" },
-        button(state.mutating ? "Scanning" : "Scan Hermes now", null, function () {
+        button(state.mutating ? "Scanning" : "Scan signals", null, function () {
           mutate(request("/context/refresh", {
             method: "POST",
-            body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: true })
+            body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false })
           }));
         }, state.mutating),
-        button("Refresh jobs", "secondary", function () {
+        button("Create refresh jobs", "secondary", function () {
           mutate(request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) }));
         }, state.mutating)
       )
@@ -319,29 +338,26 @@
   }
 
   function contextPanel(items) {
-    return el("section", { className: "hpd-section hpd-activity" },
+    return el("section", { className: "hpd-section hpd-side-panel" },
       el("div", { className: "hpd-section-head" },
-        el("h2", { text: "Inferred Context" }),
+        el("h2", { text: "Signals" }),
         badge(String(items.length))
       ),
-      el("div", { className: "hpd-activity-grid" },
-        el("div", { className: "hpd-panel" },
-          el("h3", { text: "What Hermes appears to care about" }),
-          items.length ? items.slice(0, 12).map(function (item) {
-            var sources = (item.source_types || []).join(", ");
-            return el("div", { className: "hpd-context" },
-              el("div", null,
-                el("strong", { text: (item.domain || "personal") + ": " + item.label }),
-                el("p", { text: (item.summary || "Inferred from Hermes context.") + (sources ? " Sources: " + sources + "." : "") })
-              ),
-              el("div", { className: "hpd-inline-actions" },
-                button("Hide", "ghost", function () {
-                  mutate(request("/context/" + encodeURIComponent(item.id) + "/hide", { method: "POST" }));
-                }, state.mutating)
-              )
-            );
-          }) : el("div", { className: "hpd-empty", text: "No Hermes memory, session, or cron context found yet. This fills in automatically as Hermes works." })
-        )
+      el("div", { className: "hpd-panel hpd-signal-list" },
+        items.length ? items.slice(0, 10).map(function (item) {
+          var sources = (item.source_types || []).join(", ");
+          return el("div", { className: "hpd-context" },
+            el("div", null,
+              el("strong", { text: (item.domain || "personal") + ": " + item.label }),
+              el("p", { text: sources ? "Sources: " + sources + "." : (item.summary || "Inferred from Hermes context.") })
+            ),
+            el("div", { className: "hpd-inline-actions" },
+              button("Hide", "ghost", function () {
+                mutate(request("/context/" + encodeURIComponent(item.id) + "/hide", { method: "POST" }));
+              }, state.mutating)
+            )
+          );
+        }) : el("div", { className: "hpd-empty", text: "No Hermes signals found yet." })
       )
     );
   }
@@ -378,7 +394,7 @@
 
   function activity(snapshot) {
     var runs = snapshot.refresh_runs || [];
-    return el("section", { className: "hpd-section hpd-activity" },
+    return el("section", { className: "hpd-section hpd-activity hpd-side-panel" },
       el("div", { className: "hpd-section-head" }, el("h2", { text: "Hermes Activity" })),
       el("div", { className: "hpd-activity-grid" },
         el("div", { className: "hpd-panel" },
@@ -398,13 +414,39 @@
     );
   }
 
+  function emptyMain(curation) {
+    curation = curation || {};
+    return el("section", { className: "hpd-section hpd-main-empty" },
+      el("div", { className: "hpd-section-head" },
+        el("h2", { text: "Cards" }),
+        badge("0")
+      ),
+      el("div", { className: "hpd-empty" },
+        el("strong", { text: curation.title || "No curated cards yet" }),
+        el("p", { text: curation.message || "Hermes has not written any dashboard cards yet." })
+      )
+    );
+  }
+
+  function mainSections(grouped, curation) {
+    var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
+    if (!total) return emptyMain(curation);
+    return el("div", { className: "hpd-sections" },
+      grouped.now.length ? cardSection("Now", grouped.now, "") : null,
+      grouped.today.length ? cardSection("Today", grouped.today, "") : null,
+      grouped.week.length ? cardSection("This Week", grouped.week, "") : null,
+      grouped.watching.length ? cardSection("Watching", grouped.watching, "") : null
+    );
+  }
+
   function render() {
     var root = document.getElementById("app-root");
     if (!root) return;
     root.innerHTML = "";
     var snapshot = state.snapshot;
-    var cards = snapshot ? (snapshot.cards || []) : [];
+    var cards = snapshot ? visibleCards(snapshot.cards || []) : [];
     var contextItems = snapshot ? (snapshot.context_items || []) : [];
+    var curation = snapshot ? (snapshot.curation || {}) : {};
     var grouped = { now: [], today: [], week: [], watching: [] };
     cards.forEach(function (card) {
       var key = sectionFor(card);
@@ -426,15 +468,16 @@
       syncStatus(snapshot),
       state.error ? errorPanel(state.error) : null,
       snapshot ? [
-        reflectionPanel(snapshot, cards, contextItems),
-        el("div", { className: "hpd-sections" },
-          cardSection("Now", grouped.now, "No urgent Hermes-derived cards."),
-          cardSection("Today", grouped.today, "No daily Hermes-derived cards."),
-          cardSection("This Week", grouped.week, "No weekly Hermes-derived cards."),
-          cardSection("Watching", grouped.watching, "No long-running Hermes-derived watches.")
-        ),
-        contextPanel(contextItems),
-        activity(snapshot)
+        curationPanel(snapshot, cards, contextItems),
+        el("div", { className: "hpd-dashboard-grid" },
+          el("div", { className: "hpd-main-column" },
+            mainSections(grouped, curation)
+          ),
+          el("aside", { className: "hpd-side-rail" },
+            contextPanel(contextItems),
+            activity(snapshot)
+          )
+        )
       ] : null
     ));
   }
