@@ -541,7 +541,28 @@
   background: rgba(255, 241, 242, 0.84);
   border-color: rgba(220, 38, 38, 0.42);
   color: #b91c1c;
+  display: grid;
+  gap: 8px;
   padding: 12px;
+}
+
+.hpd-error-title {
+  color: #b91c1c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hpd-error-detail {
+  color: #991b1b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .hpd-activity-grid {

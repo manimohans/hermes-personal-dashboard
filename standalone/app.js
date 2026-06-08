@@ -58,9 +58,12 @@
   }
 
   function request(path, options) {
+    options = options || {};
     return fetch(API + path, Object.assign({
       headers: { "Content-Type": "application/json" }
-    }, options || {})).then(function (res) {
+    }, options)).catch(function (err) {
+      throw makeNetworkError(path, options, err);
+    }).then(function (res) {
       return res.text().then(function (text) {
         var data = {};
         if (text) {
@@ -71,11 +74,63 @@
           }
         }
         if (!res.ok) {
-          throw new Error(data.detail || data.error || "Request failed");
+          throw makeApiError(path, options, res, data);
         }
         return data;
       });
     });
+  }
+
+  function requestMethod(options) {
+    return String((options && options.method) || "GET").toUpperCase();
+  }
+
+  function apiUrl(path) {
+    return window.location.origin + API + path;
+  }
+
+  function responseDetail(data) {
+    if (!data) return "No response body returned.";
+    if (data.detail) return String(data.detail);
+    if (data.error) return String(data.error);
+    try {
+      return JSON.stringify(data);
+    } catch (_err) {
+      return "Response body could not be displayed.";
+    }
+  }
+
+  function errorHint(status) {
+    if (status === 401 || status === 403) {
+      return "Hint: this is an authorization failure. If you opened this inside Hermes Dashboard, sign in again or use the standalone dashboard URL. If this standalone app is behind a proxy, make sure the proxy is not protecting /api/plugins/hermes-personal-dashboard/.";
+    }
+    if (status === 404) {
+      return "Hint: the dashboard API route was not found. Make sure you are running the latest standalone server, not an older Hermes Dashboard plugin route.";
+    }
+    if (status >= 500) {
+      return "Hint: the server failed while reading Hermes data. Check ~/.hermes/run/hermes-personal-dashboard.log or the terminal running standalone/server.py.";
+    }
+    return "Hint: retry the request, then check the standalone server log if it keeps failing.";
+  }
+
+  function makeApiError(path, options, res, data) {
+    var message = [
+      "Dashboard request failed.",
+      requestMethod(options) + " " + apiUrl(path),
+      "HTTP " + res.status + (res.statusText ? " " + res.statusText : ""),
+      "Response: " + responseDetail(data),
+      errorHint(res.status)
+    ].join("\n");
+    return new Error(message);
+  }
+
+  function makeNetworkError(path, options, err) {
+    return new Error([
+      "Dashboard API is unreachable.",
+      requestMethod(options) + " " + apiUrl(path),
+      "Browser error: " + ((err && err.message) || String(err)),
+      "Hint: make sure the standalone server is running and that you opened the dashboard on the same host and port printed by install.sh."
+    ].join("\n"));
   }
 
   function priorityClass(priority) {
@@ -145,6 +200,14 @@
       el("div", { className: "hpd-sync-meter", "aria-hidden": "true" },
         el("span", { className: "hpd-sync-line" })
       )
+    );
+  }
+
+  function errorPanel(message) {
+    var lines = String(message || "Unknown dashboard error.").split("\n");
+    return el("div", { className: "hpd-error" },
+      el("strong", { className: "hpd-error-title", text: lines.shift() || "Dashboard error" }),
+      el("pre", { className: "hpd-error-detail", text: lines.join("\n") })
     );
   }
 
@@ -361,7 +424,7 @@
         )
       ),
       syncStatus(snapshot),
-      state.error ? el("div", { className: "hpd-error", text: state.error }) : null,
+      state.error ? errorPanel(state.error) : null,
       snapshot ? [
         reflectionPanel(snapshot, cards, contextItems),
         el("div", { className: "hpd-sections" },
