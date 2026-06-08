@@ -8,7 +8,8 @@
 	  mutating: false,
 	  error: "",
 	  notice: "",
-	  detailsOpen: false
+	  detailsOpen: false,
+	  expandedCards: {}
 	};
 
   function cx() {
@@ -142,13 +143,48 @@
     return "hpd-priority-medium";
   }
 
+  function sectionAlias(value) {
+    var key = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    var aliases = {
+      now: "now",
+      urgent: "now",
+      alerts: "now",
+      alert: "now",
+      weather: "now",
+      calendar: "now",
+      today: "today",
+      daily: "today",
+      news: "today",
+      family: "today",
+      daycare: "today",
+      this_week: "week",
+      week: "week",
+      weekly: "week",
+      planning: "week",
+      sports: "week",
+      events: "week",
+      event: "week",
+      watching: "watching",
+      watchlist: "watching",
+      radar: "watching",
+      on_radar: "watching",
+      projects: "watching",
+      project: "watching",
+      stocks: "watching",
+      stock: "watching",
+      finance: "watching"
+    };
+    return aliases[key] || "";
+  }
+
   function sectionFor(card) {
     var payload = card.payload || {};
-    if (payload.section) return payload.section;
-    if (card.pinned || card.priority === "critical" || card.priority === "high") return "now";
-    if (["weather", "calendar", "alerts"].indexOf(card.domain) >= 0) return "now";
-    if (["news", "daily", "daycare", "family"].indexOf(card.domain) >= 0) return "today";
-    if (["planning", "sports", "events"].indexOf(card.domain) >= 0) return "week";
+    var explicit = sectionAlias(payload.section);
+    if (explicit) return explicit;
+    var domainSection = sectionAlias(card.domain);
+    if (domainSection) return domainSection;
+    if (card.priority === "critical") return "now";
+    if (card.priority === "high") return "today";
     return "watching";
   }
 
@@ -239,7 +275,10 @@
   function runningRefresh(snapshot) {
     var runs = snapshot ? (snapshot.refresh_runs || []) : [];
     for (var i = 0; i < runs.length; i += 1) {
-      if (runs[i].status === "running") return runs[i];
+      if (runs[i].status === "running") {
+        var started = Date.parse(runs[i].started_at || "");
+        if (!Number.isFinite(started) || Date.now() - started < 20 * 60 * 1000) return runs[i];
+      }
     }
     return null;
   }
@@ -258,15 +297,15 @@
       title = "Checking for new Hermes context";
       detail = "Refreshing the dashboard snapshot and stale-card status.";
     } else if (running) {
-      title = "Hermes refresh running";
-      detail = running.summary || running.job_key || "A scheduled dashboard refresh is in progress.";
+      title = "Updating in background";
+      detail = running.summary || running.job_key || "Hermes is refreshing dashboard cards.";
     } else {
       return null;
     }
-    return el("section", { className: cx("hpd-sync", !snapshot && "is-prominent") },
+    return el("section", { className: cx("hpd-sync", snapshot && "is-compact", !snapshot && "is-prominent") },
       el("div", { className: "hpd-sync-pulse", "aria-hidden": "true" }),
       el("div", { className: "hpd-sync-copy" },
-        el("p", { className: "hpd-eyebrow", text: "Working" }),
+        el("p", { className: "hpd-eyebrow", text: "Updating" }),
         el("strong", { text: title }),
         el("span", { text: detail })
       ),
@@ -364,6 +403,8 @@
 
   function cardItem(card) {
     var isPinned = Boolean(card.pinned) || card.status === "pinned";
+    var expanded = Boolean(state.expandedCards[card.id]);
+    var hasDetail = Boolean(card.detail_md || card.why_shown);
     return el("article", { className: cx("hpd-card", card.status === "stale" && "is-stale") },
       el("div", { className: "hpd-card-top" },
         el("div", { className: "hpd-card-title-block" },
@@ -377,20 +418,54 @@
         )
       ),
       el("p", { className: "hpd-summary", text: card.summary || "" }),
-      card.detail_md ? el("pre", { className: "hpd-detail", text: card.detail_md }) : null,
+      expanded ? el("div", { className: "hpd-card-expanded" },
+        card.why_shown ? el("p", { className: "hpd-why", text: card.why_shown }) : null,
+        card.detail_md ? el("pre", { className: "hpd-detail", text: card.detail_md }) : null
+      ) : null,
       el("div", { className: "hpd-meta" },
         freshness(card.updated_at) ? el("span", { text: freshness(card.updated_at) }) : null,
-        card.source_label ? el("span", { text: card.source_label }) : null,
-        card.why_shown ? el("span", { text: card.why_shown }) : null
+        card.source_label ? el("span", { text: card.source_label }) : null
       ),
       el("div", { className: "hpd-card-actions" },
         card.source_url ? el("a", { href: card.source_url, target: "_blank", rel: "noreferrer", text: "Source" }) : null,
+        hasDetail ? button(expanded ? "Hide Detail" : "Detail", "ghost", function () {
+          state.expandedCards[card.id] = !expanded;
+          render();
+        }, false) : null,
         button(isPinned ? "Unpin" : "Pin", "ghost", function () {
           mutate(request("/cards/" + encodeURIComponent(card.id) + "/" + (isPinned ? "unpin" : "pin"), { method: "POST" }));
         }, state.mutating),
         button("Dismiss", "ghost", function () {
           mutate(request("/cards/" + encodeURIComponent(card.id) + "/dismiss", { method: "POST" }));
         }, state.mutating)
+      )
+    );
+  }
+
+  function insightLabel(card) {
+    var domain = String(card.domain || "card");
+    if (card.priority === "critical") return "Critical";
+    if (card.priority === "high") return domain;
+    return domain;
+  }
+
+  function overview(cards) {
+    if (!cards.length) return null;
+    var top = cards.slice(0, 5);
+    return el("section", { className: "hpd-briefing" },
+      el("div", { className: "hpd-briefing-head" },
+        el("p", { className: "hpd-eyebrow", text: "Snapshot" }),
+        el("h2", { text: "What matters now" })
+      ),
+      el("div", { className: "hpd-briefing-grid" },
+        top.map(function (card) {
+          return el("article", { className: "hpd-briefing-card" },
+            el("span", { text: insightLabel(card) }),
+            el("strong", { text: card.title || "Untitled card" }),
+            el("p", { text: card.summary || "" }),
+            el("small", { text: freshness(card.updated_at) || "current" })
+          );
+        })
       )
     );
   }
@@ -556,14 +631,15 @@
 	  );
 	}
 
-	function mainSections(grouped, curation, onOpenDetails) {
+	function mainSections(grouped, curation, onOpenDetails, rankedCards) {
 	  var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
 	  if (!total) return emptyMain(curation, onOpenDetails);
 	  return el("div", { className: "hpd-sections" },
+      overview(rankedCards || grouped.now.concat(grouped.today, grouped.week, grouped.watching)),
       grouped.now.length ? cardSection("Now", grouped.now, "") : null,
       grouped.today.length ? cardSection("Today", grouped.today, "") : null,
       grouped.week.length ? cardSection("This Week", grouped.week, "") : null,
-      grouped.watching.length ? cardSection("Watching", grouped.watching, "") : null
+      grouped.watching.length ? cardSection("On Radar", grouped.watching, "") : null
     );
   }
 
@@ -607,7 +683,7 @@
 	      snapshot ? [
 	        el("div", { className: cx("hpd-dashboard-grid", state.detailsOpen && "is-details-open") },
 	          el("div", { className: "hpd-main-column" },
-	            mainSections(grouped, curation, openDetails)
+	            mainSections(grouped, curation, openDetails, cards)
 	          ),
 	          state.detailsOpen ? el("aside", { className: "hpd-side-rail" },
 	            statusPanel(snapshot, cards, contextItems),

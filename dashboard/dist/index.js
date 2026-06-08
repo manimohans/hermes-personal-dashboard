@@ -110,13 +110,48 @@
     return "hpd-priority-medium";
   }
 
+  function sectionAlias(value) {
+    const key = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const aliases = {
+      now: "now",
+      urgent: "now",
+      alerts: "now",
+      alert: "now",
+      weather: "now",
+      calendar: "now",
+      today: "today",
+      daily: "today",
+      news: "today",
+      family: "today",
+      daycare: "today",
+      this_week: "week",
+      week: "week",
+      weekly: "week",
+      planning: "week",
+      sports: "week",
+      events: "week",
+      event: "week",
+      watching: "watching",
+      watchlist: "watching",
+      radar: "watching",
+      on_radar: "watching",
+      projects: "watching",
+      project: "watching",
+      stocks: "watching",
+      stock: "watching",
+      finance: "watching"
+    };
+    return aliases[key] || "";
+  }
+
   function sectionFor(card) {
     const payload = card.payload || {};
-    if (payload.section) return payload.section;
-    if (card.pinned || card.priority === "critical" || card.priority === "high") return "now";
-    if (["weather", "calendar", "alerts"].indexOf(card.domain) >= 0) return "now";
-    if (["news", "daily", "daycare", "family"].indexOf(card.domain) >= 0) return "today";
-    if (["planning", "sports", "events"].indexOf(card.domain) >= 0) return "week";
+    const explicit = sectionAlias(payload.section);
+    if (explicit) return explicit;
+    const domainSection = sectionAlias(card.domain);
+    if (domainSection) return domainSection;
+    if (card.priority === "critical") return "now";
+    if (card.priority === "high") return "today";
     return "watching";
   }
 
@@ -222,7 +257,10 @@
   function runningRefresh(snapshot) {
     const runs = snapshot ? (snapshot.refresh_runs || []) : [];
     for (let i = 0; i < runs.length; i += 1) {
-      if (runs[i].status === "running") return runs[i];
+      if (runs[i].status === "running") {
+        const started = Date.parse(runs[i].started_at || "");
+        if (!Number.isFinite(started) || Date.now() - started < 20 * 60 * 1000) return runs[i];
+      }
     }
     return null;
   }
@@ -242,15 +280,15 @@
       title = "Checking for new Hermes context";
       detail = "Refreshing the dashboard snapshot and stale-card status.";
     } else if (running) {
-      title = "Hermes refresh running";
-      detail = running.summary || running.job_key || "A scheduled dashboard refresh is in progress.";
+      title = "Updating in background";
+      detail = running.summary || running.job_key || "Hermes is refreshing dashboard cards.";
     } else {
       return null;
     }
-    return h("section", { className: cx("hpd-sync", !snapshot && "is-prominent") },
+    return h("section", { className: cx("hpd-sync", snapshot && "is-compact", !snapshot && "is-prominent") },
       h("div", { className: "hpd-sync-pulse", "aria-hidden": "true" }),
       h("div", { className: "hpd-sync-copy" },
-        h("p", { className: "hpd-eyebrow" }, "Working"),
+        h("p", { className: "hpd-eyebrow" }, "Updating"),
         h("strong", null, title),
         h("span", null, detail)
       ),
@@ -263,6 +301,8 @@
   function CardItem(props) {
     const card = props.card;
     const isPinned = Boolean(card.pinned) || card.status === "pinned";
+    const expanded = Boolean(props.expanded);
+    const hasDetail = Boolean(card.detail_md || card.why_shown);
     return h("article", { className: cx("hpd-card", card.status === "stale" && "is-stale") },
       h("div", { className: "hpd-card-top" },
         h("div", { className: "hpd-card-title-block" },
@@ -276,14 +316,20 @@
         )
       ),
       h("p", { className: "hpd-summary" }, card.summary),
-      card.detail_md ? h("pre", { className: "hpd-detail" }, card.detail_md) : null,
+      expanded ? h("div", { className: "hpd-card-expanded" },
+        card.why_shown ? h("p", { className: "hpd-why" }, card.why_shown) : null,
+        card.detail_md ? h("pre", { className: "hpd-detail" }, card.detail_md) : null
+      ) : null,
       h("div", { className: "hpd-meta" },
         h("span", null, freshness(card.updated_at)),
-        card.source_label ? h("span", null, card.source_label) : null,
-        card.why_shown ? h("span", null, card.why_shown) : null
+        card.source_label ? h("span", null, card.source_label) : null
       ),
       h("div", { className: "hpd-card-actions" },
         card.source_url ? h("a", { href: card.source_url, target: "_blank", rel: "noreferrer" }, "Source") : null,
+        hasDetail ? h(Button, {
+          variant: "ghost",
+          onClick: function () { props.onToggleDetail(card.id); },
+        }, expanded ? "Hide Detail" : "Detail") : null,
         h(Button, {
           variant: "ghost",
           onClick: function () { isPinned ? props.onUnpin(card.id) : props.onPin(card.id); },
@@ -308,13 +354,43 @@
               return h(CardItem, {
                 key: card.id,
                 card: card,
+                expanded: props.expandedCards && props.expandedCards[card.id],
                 onDismiss: props.onDismiss,
                 onPin: props.onPin,
                 onUnpin: props.onUnpin,
+                onToggleDetail: props.onToggleDetail,
               });
             })
           )
         : h("div", { className: "hpd-empty" }, props.empty)
+    );
+  }
+
+  function insightLabel(card) {
+    const domain = String(card.domain || "card");
+    if (card.priority === "critical") return "Critical";
+    if (card.priority === "high") return domain;
+    return domain;
+  }
+
+  function Overview(props) {
+    const cards = props.cards || [];
+    if (!cards.length) return null;
+    return h("section", { className: "hpd-briefing" },
+      h("div", { className: "hpd-briefing-head" },
+        h("p", { className: "hpd-eyebrow" }, "Snapshot"),
+        h("h2", null, "What matters now")
+      ),
+      h("div", { className: "hpd-briefing-grid" },
+        cards.slice(0, 5).map(function (card) {
+          return h("article", { key: card.id, className: "hpd-briefing-card" },
+            h("span", null, insightLabel(card)),
+            h("strong", null, card.title || "Untitled card"),
+            h("p", null, card.summary || ""),
+            h("small", null, freshness(card.updated_at) || "current")
+          );
+        })
+      )
     );
   }
 
@@ -458,7 +534,9 @@
     const grouped = props.grouped;
     const total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
     if (!total) return h(EmptyMain, { curation: props.curation, onOpenDetails: props.onOpenDetails });
+    const allCards = props.cards || grouped.now.concat(grouped.today, grouped.week, grouped.watching);
     return h("div", { className: "hpd-sections" },
+      h(Overview, { cards: allCards }),
       grouped.now.length ? h(CardSection, Object.assign({
         title: "Now",
         cards: grouped.now,
@@ -475,7 +553,7 @@
         empty: "No weekly Hermes-curated cards.",
       }, props.cardActions)) : null,
       grouped.watching.length ? h(CardSection, Object.assign({
-        title: "Watching",
+        title: "On Radar",
         cards: grouped.watching,
         empty: "No long-running Hermes-curated watches.",
       }, props.cardActions)) : null
@@ -489,6 +567,7 @@
     const [error, setError] = React.useState("");
     const [notice, setNotice] = React.useState("");
     const [detailsOpen, setDetailsOpen] = React.useState(false);
+    const [expandedCards, setExpandedCards] = React.useState({});
 
     const load = React.useCallback(function () {
       setLoading(true);
@@ -577,6 +656,12 @@
       onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
       onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
       onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
+      onToggleDetail: function (id) {
+        setExpandedCards(function (previous) {
+          return Object.assign({}, previous, { [id]: !previous[id] });
+        });
+      },
+      expandedCards: expandedCards,
     };
 
     return h("main", { className: "hpd-root" },
@@ -598,6 +683,7 @@
           h("div", { className: "hpd-main-column" },
             h(MainSections, {
               grouped: grouped,
+              cards: cards,
               curation: curation,
               cardActions: cardActions,
               onOpenDetails: function () { setDetailsOpen(true); },
