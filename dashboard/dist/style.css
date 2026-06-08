@@ -1155,7 +1155,9 @@
 
   .hpd-card {
     gap: 6px;
+    max-height: 248px;
     min-height: 0;
+    overflow: hidden;
     padding: 9px;
   }
 
@@ -1189,7 +1191,7 @@
     line-height: 1.32;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
   }
 
   .hpd-data {
@@ -1223,11 +1225,11 @@
   }
 
   .hpd-data-list {
-    max-height: 184px;
+    max-height: 118px;
     overflow: hidden;
   }
 
-  .hpd-data-list .hpd-data-item:nth-of-type(n+5) {
+  .hpd-data-list .hpd-data-item:nth-of-type(n+4) {
     display: none;
   }
 
@@ -1248,14 +1250,18 @@
     line-height: 1.25;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
   }
 
   .hpd-meta {
     font-size: 9px;
     gap: 5px;
-    max-height: 28px;
+    max-height: 13px;
     overflow: hidden;
+  }
+
+  .hpd-meta span + span {
+    display: none;
   }
 
   .hpd-card-actions {
