@@ -404,8 +404,9 @@
     var metrics = [];
     appendMetricObject(metrics, payload.metrics);
     appendMetricObject(metrics, payload.readings);
+    var hasGenericMetrics = metrics.filter(Boolean).length > 0;
     var observed = payload.observed || payload.current || null;
-    if (observed && typeof observed === "object" && !Array.isArray(observed)) {
+    if (!hasGenericMetrics && observed && typeof observed === "object" && !Array.isArray(observed)) {
       metrics.push(dataMetric("Condition", observed.condition));
       metrics.push(dataMetric("Temp", observed.temp_F, "F"));
       metrics.push(dataMetric("Feels", observed.feels_like_F, "F"));
@@ -413,11 +414,13 @@
       metrics.push(dataMetric("Wind", observed.wind_mph, " mph"));
       metrics.push(dataMetric("AQI", observed.aqi));
     }
-    metrics.push(dataMetric("Machine Temp", payload.thermal_zone0_c, "C"));
-    metrics.push(dataMetric("Current Temp", payload.current_temp_c, "C"));
-    metrics.push(dataMetric("Current Temp", payload.current_temp_f, "F"));
-    metrics.push(dataMetric("Unread", payload.unread_count));
-    metrics.push(dataMetric("Events", payload.calendar_events_seen));
+    if (!hasGenericMetrics) {
+      metrics.push(dataMetric("Machine Temp", payload.thermal_zone0_c, "C"));
+      metrics.push(dataMetric("Current Temp", payload.current_temp_c, "C"));
+      metrics.push(dataMetric("Current Temp", payload.current_temp_f, "F"));
+      metrics.push(dataMetric("Unread", payload.unread_count));
+      metrics.push(dataMetric("Events", payload.calendar_events_seen));
+    }
     metrics = metrics.filter(Boolean);
     if (metrics.length) {
       nodes.push(el("div", { className: "hpd-data-grid" }, metrics));
@@ -436,18 +439,26 @@
         if (list) nodes.push(list);
       });
     }
+    var hasGenericLists = nodes.length > (metrics.length ? 1 : 0);
+    if (Array.isArray(payload.items) && payload.items.length) {
+      var genericItems = dataList("Items", payload.items);
+      if (genericItems) nodes.push(genericItems);
+      hasGenericLists = true;
+    }
 
-    [
-      ["News", payload.news_items || payload.headlines || payload.stories || payload.items],
-      ["Calendar", payload.calendar_events || payload.events],
-      ["Email", payload.email_items || payload.emails],
-      ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
-      ["Sports", payload.fixtures || payload.games || payload.scores],
-      ["Stocks", payload.tickers || payload.positions || payload.alerts]
-    ].forEach(function (group) {
-      var list = dataList(group[0], group[1]);
-      if (list) nodes.push(list);
-    });
+    if (!hasGenericLists) {
+      [
+        ["News", payload.news_items || payload.headlines || payload.stories],
+        ["Calendar", payload.calendar_events || payload.events],
+        ["Email", payload.email_items || payload.emails],
+        ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
+        ["Sports", payload.fixtures || payload.games || payload.scores],
+        ["Stocks", payload.tickers || payload.positions || payload.alerts]
+      ].forEach(function (group) {
+        var list = dataList(group[0], group[1]);
+        if (list) nodes.push(list);
+      });
+    }
 
     if (!nodes.length) return null;
     return el("div", { className: "hpd-data" }, nodes);

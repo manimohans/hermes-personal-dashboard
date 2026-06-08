@@ -420,7 +420,8 @@
     const metrics = [];
     appendMetricObject(metrics, payload.metrics);
     appendMetricObject(metrics, payload.readings);
-    if (observed && typeof observed === "object" && !Array.isArray(observed)) {
+    const hasGenericMetrics = metrics.length > 0;
+    if (!hasGenericMetrics && observed && typeof observed === "object" && !Array.isArray(observed)) {
       metrics.push(["Condition", observed.condition]);
       metrics.push(["Temp", observed.temp_F, "F"]);
       metrics.push(["Feels", observed.feels_like_F, "F"]);
@@ -428,11 +429,13 @@
       metrics.push(["Wind", observed.wind_mph, " mph"]);
       metrics.push(["AQI", observed.aqi]);
     }
-    metrics.push(["Machine Temp", payload.thermal_zone0_c, "C"]);
-    metrics.push(["Current Temp", payload.current_temp_c, "C"]);
-    metrics.push(["Current Temp", payload.current_temp_f, "F"]);
-    metrics.push(["Unread", payload.unread_count]);
-    metrics.push(["Events", payload.calendar_events_seen]);
+    if (!hasGenericMetrics) {
+      metrics.push(["Machine Temp", payload.thermal_zone0_c, "C"]);
+      metrics.push(["Current Temp", payload.current_temp_c, "C"]);
+      metrics.push(["Current Temp", payload.current_temp_f, "F"]);
+      metrics.push(["Unread", payload.unread_count]);
+      metrics.push(["Events", payload.calendar_events_seen]);
+    }
     const metricNodes = metrics.map(function (metric) {
       return h(DataMetric, { key: metric[0] + ":" + metric[1], label: metric[0], value: metric[1], suffix: metric[2] });
     }).filter(Boolean);
@@ -448,15 +451,18 @@
         genericLists.push([humanLabel(key), payload.lists[key]]);
       });
     }
-    const lists = [
-      ...genericLists,
-      ["News", payload.news_items || payload.headlines || payload.stories || payload.items],
+    if (Array.isArray(payload.items) && payload.items.length) {
+      genericLists.push(["Items", payload.items]);
+    }
+    const domainLists = genericLists.length ? [] : [
+      ["News", payload.news_items || payload.headlines || payload.stories],
       ["Calendar", payload.calendar_events || payload.events],
       ["Email", payload.email_items || payload.emails],
       ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
       ["Sports", payload.fixtures || payload.games || payload.scores],
       ["Stocks", payload.tickers || payload.positions || payload.alerts]
-    ].map(function (group) {
+    ];
+    const lists = genericLists.concat(domainLists).map(function (group) {
       return h(DataList, { key: group[0], label: group[0], items: group[1] });
     }).filter(Boolean);
     if (!metricNodes.length && !lists.length) return null;
