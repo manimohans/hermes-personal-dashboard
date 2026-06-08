@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PLUGIN_NAME="hermes-personal-dashboard"
 HERMES_HOME="${HERMES_HOME:-"${HOME}/.hermes"}"
-APP_TARGET="${HERMES_HOME}/products/${PLUGIN_NAME}"
+INSTALL_ROOT="${HERMES_PRODUCTS_HOME:-"${HERMES_HOME}/products"}"
+APP_TARGET="${INSTALL_ROOT}/${PLUGIN_NAME}"
 PLUGIN_TARGET="${HERMES_HOME}/plugins/${PLUGIN_NAME}"
 
 ok() {
@@ -28,6 +29,7 @@ echo
 
 [ -f plugin.yaml ] || fail "plugin.yaml not found"
 [ -f __init__.py ] || fail "__init__.py not found"
+[ -x run.sh ] || fail "run.sh not found or not executable"
 [ -f dashboard/manifest.json ] || fail "dashboard/manifest.json not found"
 [ -f dashboard/plugin_api.py ] || fail "dashboard/plugin_api.py not found"
 [ -f dashboard/dist/index.js ] || fail "dashboard/dist/index.js not found"
@@ -138,18 +140,18 @@ if [ -e "${APP_TARGET}" ]; then
   fi
 else
   warn "standalone app is not installed at ${APP_TARGET}"
-  echo "     Run: ./install.sh"
+  echo "     Run: ./run.sh --lan"
 fi
 
 if [ -e "${PLUGIN_TARGET}" ]; then
   ok "optional Hermes plugin install exists at ${PLUGIN_TARGET}"
 else
   warn "optional Hermes plugin is not installed at ${PLUGIN_TARGET}"
-  echo "     Optional: ./install.sh --with-plugin"
+  echo "     Optional: ./run.sh --with-plugin"
 fi
 
 echo
 echo "Next useful commands:"
-echo "  ./install.sh"
-echo "  hermes-personal-dashboard --host 0.0.0.0 --port 9119"
-echo "  ./install.sh --remove-existing --yes"
+echo "  ./run.sh"
+echo "  ./run.sh --lan"
+echo "  ./run.sh --remove-existing --yes"

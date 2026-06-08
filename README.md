@@ -50,14 +50,27 @@ Then it creates inferred context items and dashboard cards.
 
 ## Install And Run
 
-One-command install. This installs the dashboard, starts its own web server in
-the background, and gives the terminal back:
+One command does the install, web UI build checks, server start, and URL print.
+It starts its own standalone web server and gives the terminal back.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/run.sh | bash
 ```
 
-Then open the printed URL. On a Raspberry Pi or home server it will usually be:
+On a Raspberry Pi, home server, or any machine you want to reach from another
+device on your LAN:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/run.sh | bash -s -- --lan
+```
+
+`--lan` is shorthand for:
+
+```bash
+--host 0.0.0.0 --insecure --no-open
+```
+
+Then open the printed URL. It will usually look like:
 
 ```text
 http://<machine-ip>:9119
@@ -65,31 +78,45 @@ http://<machine-ip>:9119
 
 No Hermes Dashboard tab is required.
 
+The launcher follows the useful Hermes dashboard conventions:
+
+| Flag | Purpose |
+| --- | --- |
+| `--host` | bind address, default `127.0.0.1` |
+| `--port` | preferred port, default `9119` |
+| `--insecure` | required for non-localhost binding |
+| `--no-open` | do not launch a browser |
+| `--skip-build` | skip local syntax/build checks |
+| `--strict-port` | fail if the requested port is busy |
+
+If the preferred port is busy, `run.sh` chooses the next free port and prints
+the actual URL.
+
 Manual install:
 
 ```bash
 mkdir -p ~/.hermes/products
 git clone https://github.com/manimohans/hermes-personal-dashboard.git \
   ~/.hermes/products/hermes-personal-dashboard
-~/.hermes/products/hermes-personal-dashboard/install.sh
+~/.hermes/products/hermes-personal-dashboard/run.sh --lan
 ```
 
 Or symlink this checkout while developing:
 
 ```bash
-./install.sh
+./run.sh
 ```
 
 Clean reinstall:
 
 ```bash
-./install.sh --remove-existing --yes
+./run.sh --remove-existing --yes
 ```
 
 Uninstall:
 
 ```bash
-./install.sh --uninstall --yes
+./run.sh --uninstall --yes
 ```
 
 Run manually:
@@ -108,7 +135,7 @@ Optional: install the same repo as a Hermes plugin so Hermes jobs can use the
 model-visible dashboard tools:
 
 ```bash
-./install.sh --with-plugin
+./run.sh --with-plugin
 ```
 
 ## Try It Before Installing Hermes
@@ -300,6 +327,7 @@ available. In a minimal Python environment they are skipped.
 |-- schemas.py
 |-- plugin.yaml
 |-- install.sh
+|-- run.sh
 |-- dashboard/
 |   |-- manifest.json
 |   |-- plugin_api.py
