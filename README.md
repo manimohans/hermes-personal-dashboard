@@ -1,13 +1,13 @@
 # Hermes Personal Dashboard
 
-Zero-setup personal dashboard for Hermes Agent.
+Zero-setup standalone personal dashboard for Hermes Agent.
 
 Hermes already knows things from memory, sessions, cron runs, and prior agent
-work. This plugin turns that existing context into a dashboard without asking
+work. This app turns that existing context into a dashboard without asking
 the user to pick interests, enter a location, add tickers, choose teams, or
 build a setup profile.
 
-Open the tab. It reflects what Hermes has already figured out.
+Open the web app. It reflects what Hermes has already figured out.
 
 ## What It Shows
 
@@ -48,30 +48,30 @@ Instead it scans existing Hermes state:
 
 Then it creates inferred context items and dashboard cards.
 
-## Install
+## Install And Run
 
-One-command install:
+One-command install. This installs the dashboard, starts its own web server in
+the background, and gives the terminal back:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/install.sh | bash
 ```
 
-Then open Hermes:
+Then open the printed URL. On a Raspberry Pi or home server it will usually be:
 
-```bash
-hermes dashboard
+```text
+http://<machine-ip>:9119
 ```
 
-Open the **Personal Dashboard** tab. No configuration is required.
+No Hermes Dashboard tab is required.
 
 Manual install:
 
 ```bash
-mkdir -p ~/.hermes/plugins
+mkdir -p ~/.hermes/products
 git clone https://github.com/manimohans/hermes-personal-dashboard.git \
-  ~/.hermes/plugins/hermes-personal-dashboard
-hermes plugins enable hermes-personal-dashboard
-hermes dashboard
+  ~/.hermes/products/hermes-personal-dashboard
+~/.hermes/products/hermes-personal-dashboard/install.sh
 ```
 
 Or symlink this checkout while developing:
@@ -80,10 +80,35 @@ Or symlink this checkout while developing:
 ./install.sh
 ```
 
+Clean reinstall:
+
+```bash
+./install.sh --remove-existing --yes
+```
+
+Uninstall:
+
+```bash
+./install.sh --uninstall --yes
+```
+
+Run manually:
+
+```bash
+hermes-personal-dashboard --host 0.0.0.0 --port 9119
+```
+
 Check the install:
 
 ```bash
 ./scripts/doctor.sh
+```
+
+Optional: install the same repo as a Hermes plugin so Hermes jobs can use the
+model-visible dashboard tools:
+
+```bash
+./install.sh --with-plugin
 ```
 
 ## Try It Before Installing Hermes
@@ -105,7 +130,7 @@ data so you can click through the zero-setup experience.
 
 ## First Run
 
-On first load, the dashboard asks the backend for `/snapshot`. The backend can
+On first load, the standalone app asks the backend for `/snapshot`. The backend can
 auto-scan Hermes memory, session history, cron jobs, and cron output, then write
 cards into the local SQLite store.
 
@@ -132,7 +157,7 @@ List what Hermes inferred:
 /personal-dashboard context
 ```
 
-Create recurring autonomous refresh jobs:
+Create recurring autonomous refresh jobs, when running with Hermes plugin support:
 
 ```bash
 /personal-dashboard create-jobs
@@ -171,11 +196,11 @@ Hermes to:
 
 ## User Controls
 
-The dashboard includes correction controls, not setup controls:
+The standalone dashboard includes correction controls, not setup controls:
 
 - **Refresh**: reload the snapshot
 - **Scan Hermes now**: force a memory/session/cron scan
-- **Create refresh jobs**: install autonomous recurring jobs
+- **Refresh jobs**: install autonomous recurring jobs when Hermes cron integration is available
 - **Pin / Unpin**: keep a card visible
 - **Dismiss**: hide a card
 - **Hide** on inferred context: stop showing that inferred item
@@ -201,9 +226,9 @@ Hermes jobs can use these model-visible tools:
 | `personal_dashboard_get_preferences` | read internal timestamps and cron ids |
 | `personal_dashboard_create_cron_jobs` | create autonomous refresh jobs |
 
-## Dashboard API
+## Standalone API
 
-Routes are mounted under:
+The standalone app serves the same API shape under:
 
 ```text
 /api/plugins/hermes-personal-dashboard/
@@ -230,7 +255,13 @@ Important routes:
 
 ## Storage
 
-State lives in:
+Standalone state lives in:
+
+```text
+$HERMES_HOME/personal-dashboard/cards.db
+```
+
+When installed only as a Hermes plugin, state falls back to:
 
 ```text
 $HERMES_HOME/plugins/hermes-personal-dashboard/cards.db

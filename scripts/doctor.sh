@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PLUGIN_NAME="hermes-personal-dashboard"
 HERMES_HOME="${HERMES_HOME:-"${HOME}/.hermes"}"
-TARGET="${HERMES_HOME}/plugins/${PLUGIN_NAME}"
+APP_TARGET="${HERMES_HOME}/products/${PLUGIN_NAME}"
+PLUGIN_TARGET="${HERMES_HOME}/plugins/${PLUGIN_NAME}"
 
 ok() {
   printf 'OK   %s\n' "$1"
@@ -31,14 +32,17 @@ echo
 [ -f dashboard/plugin_api.py ] || fail "dashboard/plugin_api.py not found"
 [ -f dashboard/dist/index.js ] || fail "dashboard/dist/index.js not found"
 [ -f dashboard/dist/style.css ] || fail "dashboard/dist/style.css not found"
+[ -f standalone/server.py ] || fail "standalone/server.py not found"
+[ -f standalone/app.js ] || fail "standalone/app.js not found"
 [ -f skills/briefing-curator/SKILL.md ] || fail "briefing-curator skill not found"
-ok "plugin file layout"
+ok "file layout"
 
-python3 -m py_compile __init__.py dashboard/plugin_api.py personal_dashboard_core.py schemas.py
+python3 -m py_compile __init__.py dashboard/plugin_api.py personal_dashboard_core.py schemas.py standalone/server.py
 ok "Python files compile"
 
 if command -v node >/dev/null 2>&1; then
   node --check dashboard/dist/index.js
+  node --check standalone/app.js
   ok "dashboard JavaScript parses"
 else
   warn "node not found; skipped dashboard JavaScript syntax check"
@@ -126,20 +130,26 @@ else
   warn "hermes command not found on PATH"
 fi
 
-if [ -e "${TARGET}" ]; then
-  if [ -L "${TARGET}" ]; then
-    ok "installed symlink exists at ${TARGET}"
+if [ -e "${APP_TARGET}" ]; then
+  if [ -L "${APP_TARGET}" ]; then
+    ok "standalone install symlink exists at ${APP_TARGET}"
   else
-    ok "installed plugin directory exists at ${TARGET}"
+    ok "standalone install directory exists at ${APP_TARGET}"
   fi
 else
-  warn "plugin is not installed at ${TARGET}"
+  warn "standalone app is not installed at ${APP_TARGET}"
   echo "     Run: ./install.sh"
+fi
+
+if [ -e "${PLUGIN_TARGET}" ]; then
+  ok "optional Hermes plugin install exists at ${PLUGIN_TARGET}"
+else
+  warn "optional Hermes plugin is not installed at ${PLUGIN_TARGET}"
+  echo "     Optional: ./install.sh --with-plugin"
 fi
 
 echo
 echo "Next useful commands:"
 echo "  ./install.sh"
-echo "  hermes plugins enable ${PLUGIN_NAME}"
-echo "  hermes dashboard"
-echo "  /personal-dashboard status"
+echo "  hermes-personal-dashboard --host 0.0.0.0 --port 9119"
+echo "  ./install.sh --remove-existing --yes"

@@ -184,6 +184,9 @@ def hermes_home() -> Path:
 
 
 def plugin_home(home: Optional[Path] = None) -> Path:
+    custom = os.environ.get("HERMES_PERSONAL_DASHBOARD_DATA")
+    if custom:
+        return Path(custom).expanduser()
     return (home or hermes_home()) / "plugins" / PLUGIN_ID
 
 

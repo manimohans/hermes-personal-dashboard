@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hermes Personal Dashboard</title>
+  <link rel="stylesheet" href="/dashboard/dist/style.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 9% 70%, rgba(4, 167, 206, 0.14) 0 4px, transparent 5px),
+        radial-gradient(circle at 91% 24%, rgba(0, 94, 216, 0.12) 0 3px, transparent 4px),
+        repeating-linear-gradient(0deg, rgba(0, 94, 216, 0.045) 0 1px, transparent 1px 44px),
+        repeating-linear-gradient(90deg, rgba(0, 94, 216, 0.04) 0 1px, transparent 1px 44px),
+        linear-gradient(135deg, #f5fbff, #dcefff);
+      color: #075bc0;
+      font-family: Georgia, "Times New Roman", serif;
+      margin: 0;
+      min-height: 100%;
+    }
+
+    .standalone-shell {
+      margin: 0 auto;
+      max-width: 1240px;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="standalone-shell">
+    <div id="app-root"></div>
+  </div>
+  <script src="/standalone/app.js"></script>
+</body>
+</html>
