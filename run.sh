@@ -160,6 +160,10 @@ validate_port() {
   fi
 }
 
+can_prompt() {
+  [ -t 0 ] && [ -t 1 ]
+}
+
 stop_running() {
   if [ -f "${PID_FILE}" ]; then
     local pid
@@ -518,13 +522,15 @@ validate_port
 require_safe_bind
 
 if [ "${REMOVE_EXISTING}" -eq 1 ]; then
-  if [ "${YES}" -ne 1 ] && [ "${UNINSTALL_ONLY}" -eq 0 ]; then
+  if [ "${YES}" -ne 1 ] && [ "${UNINSTALL_ONLY}" -eq 0 ] && can_prompt; then
     printf 'Remove existing %s install first? [y/N] ' "${APP_NAME}"
     read -r answer
     case "${answer}" in
       y|Y|yes|YES) ;;
       *) echo "Run cancelled."; exit 1 ;;
     esac
+  elif [ "${YES}" -ne 1 ] && [ "${UNINSTALL_ONLY}" -eq 0 ]; then
+    echo "Proceeding with --remove-existing in non-interactive mode."
   fi
   remove_existing
   if [ "${RUNNING_FROM_APP_TARGET}" -eq 1 ]; then
