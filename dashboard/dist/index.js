@@ -582,8 +582,28 @@
       .join(" - ");
   }
 
+  function isInternalDataItem(item) {
+    const text = [
+      itemTitle(item),
+      itemSummary(item),
+      itemMeta(item)
+    ].join(" ").toLowerCase();
+    const patterns = [
+      "whatsapp plain text only",
+      "keep it crisp",
+      "bullet-pointed",
+      "max 5 bullets",
+      "formatting rule",
+      "formatting preference",
+      "preferred delivery style"
+    ];
+    return patterns.some(function (pattern) {
+      return text.indexOf(pattern) >= 0;
+    });
+  }
+
   function DataList(props) {
-    const items = props.items;
+    const items = (props.items || []).filter(function (item) { return !isInternalDataItem(item); });
     if (!Array.isArray(items) || !items.length) return null;
     return h("div", { className: "hpd-data-list" },
       h("span", { className: "hpd-data-label" }, props.label),

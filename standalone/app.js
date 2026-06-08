@@ -567,11 +567,33 @@
       .join(" - ");
   }
 
+  function isInternalDataItem(item) {
+    var text = [
+      itemTitle(item),
+      itemSummary(item),
+      itemMeta(item)
+    ].join(" ").toLowerCase();
+    var patterns = [
+      "whatsapp plain text only",
+      "keep it crisp",
+      "bullet-pointed",
+      "max 5 bullets",
+      "formatting rule",
+      "formatting preference",
+      "preferred delivery style"
+    ];
+    return patterns.some(function (pattern) {
+      return text.indexOf(pattern) >= 0;
+    });
+  }
+
   function dataList(label, items) {
     if (!Array.isArray(items) || !items.length) return null;
+    var visibleItems = items.filter(function (item) { return !isInternalDataItem(item); });
+    if (!visibleItems.length) return null;
     return el("div", { className: "hpd-data-list" },
       el("span", { className: "hpd-data-label", text: label }),
-      items.slice(0, 5).map(function (item) {
+      visibleItems.slice(0, 5).map(function (item) {
         var title = itemTitle(item);
         var summary = itemSummary(item);
         var meta = itemMeta(item);
