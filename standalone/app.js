@@ -60,6 +60,95 @@
     return Math.floor(hours / 24) + "d ago";
   }
 
+  function fallbackSunTime(hour, minute) {
+    var date = new Date();
+    date.setHours(hour, minute, 0, 0);
+    return date;
+  }
+
+  function parseSunTime(value) {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i += 1) {
+        var parsed = parseSunTime(value[i]);
+        if (parsed) return parsed;
+      }
+      return null;
+    }
+    if (typeof value === "object") {
+      return null;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (value > 1000000000000) return new Date(value);
+      if (value > 1000000000) return new Date(value * 1000);
+      return null;
+    }
+    var text = String(value).trim();
+    if (/^\d{10,13}$/.test(text)) {
+      var numeric = Number(text);
+      return numeric > 1000000000000 ? new Date(numeric) : new Date(numeric * 1000);
+    }
+    var clock = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i);
+    if (clock) {
+      var hour = Number(clock[1]);
+      var minute = Number(clock[2]);
+      var suffix = (clock[3] || "").toLowerCase();
+      if (suffix === "pm" && hour < 12) hour += 12;
+      if (suffix === "am" && hour === 12) hour = 0;
+      return fallbackSunTime(hour, minute);
+    }
+    var timestamp = Date.parse(text);
+    return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+  }
+
+  function collectSunTimes(value, names, found, depth) {
+    if (!value || depth > 5) return;
+    if (Array.isArray(value)) {
+      value.forEach(function (item) { collectSunTimes(item, names, found, depth + 1); });
+      return;
+    }
+    if (typeof value !== "object") return;
+    Object.keys(value).forEach(function (key) {
+      var normalized = key.toLowerCase().replace(/[_-]+/g, "");
+      var isMatch = names.some(function (name) { return normalized.indexOf(name) >= 0; });
+      if (isMatch) {
+        var parsed = parseSunTime(value[key]);
+        if (parsed) found.push(parsed);
+      }
+      collectSunTimes(value[key], names, found, depth + 1);
+    });
+  }
+
+  function sunTimeFromSnapshot(snapshot, names) {
+    var found = [];
+    ((snapshot && snapshot.cards) || []).forEach(function (card) {
+      collectSunTimes(card.payload || {}, names, found, 0);
+    });
+    if (!found.length) return null;
+    var today = new Date();
+    var sameDay = found.filter(function (date) {
+      return date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate();
+    });
+    if (sameDay[0]) return sameDay[0];
+    var first = found[0];
+    if (!first) return null;
+    today.setHours(first.getHours(), first.getMinutes(), 0, 0);
+    return today;
+  }
+
+  function themeClass(snapshot) {
+    var params = new URLSearchParams(window.location.search || "");
+    var override = String(params.get("theme") || "").toLowerCase();
+    if (override === "dark" || override === "night") return "hpd-theme-night";
+    if (override === "light" || override === "day") return "hpd-theme-day";
+    var now = new Date();
+    var sunrise = sunTimeFromSnapshot(snapshot, ["sunrise", "sunup"]) || fallbackSunTime(6, 30);
+    var sunset = sunTimeFromSnapshot(snapshot, ["sunset", "sundown"]) || fallbackSunTime(18, 30);
+    return now < sunrise || now >= sunset ? "hpd-theme-night" : "hpd-theme-day";
+  }
+
   function request(path, options) {
     options = options || {};
     return fetch(API + path, Object.assign({
@@ -282,9 +371,9 @@
   function topicClusterKey(card) {
     var payload = card.payload || {};
     var domain = String(card.domain || "").toLowerCase();
+    var title = String(card.title || "").toLowerCase();
     if (domain === "weather") {
-      var title = String(card.title || "");
-      var match = title.match(/^(.+?)\s+(?:weather|now|conditions)\b/i) || title.match(/^(.+?):/);
+      var match = String(card.title || "").match(/^(.+?)\s+(?:weather|now|conditions)\b/i) || String(card.title || "").match(/^(.+?):/);
       var location = normalizeKey(match && match[1]) || normalizeKey(payload.location);
       return "weather:" + (location || "current");
     }
@@ -293,6 +382,27 @@
     }
     if (domain === "calendar") {
       return "calendar:current";
+    }
+    if (domain === "stocks" || domain === "stock" || domain === "finance") {
+      return "finance:watch";
+    }
+    if (domain === "news") {
+      if (title.indexOf("ai") >= 0 || title.indexOf("siri") >= 0 || title.indexOf("openai") >= 0) return "news:ai";
+      if (title.indexOf("data center") >= 0 || title.indexOf("infra") >= 0 || title.indexOf("chip") >= 0) return "news:infra";
+      return "news:" + normalizeKey(title).split("-").slice(0, 3).join("-");
+    }
+    if (domain === "family" || domain === "daycare") {
+      if (title.indexOf("daycare") >= 0 || title.indexOf("kanaa") >= 0 || title.indexOf("menu") >= 0) return "family:daycare";
+      return "family:" + normalizeKey(title).split("-").slice(0, 3).join("-");
+    }
+    if (domain === "sports") {
+      if (title.indexOf("united") >= 0 || title.indexOf("man utd") >= 0 || title.indexOf("manchester") >= 0) return "sports:man-united";
+      if (title.indexOf("ipl") >= 0 || title.indexOf("cricket") >= 0) return "sports:cricket";
+      return "sports:" + normalizeKey(title).split("-").slice(0, 3).join("-");
+    }
+    if (domain === "planning" || domain === "projects" || domain === "project") {
+      if (title.indexOf("startup") >= 0 || title.indexOf("roles") >= 0 || title.indexOf("jobs") >= 0) return "projects:startup-jobs";
+      return "projects:" + normalizeKey(title).split("-").slice(0, 3).join("-");
     }
     return "";
   }
@@ -312,6 +422,9 @@
     var candidatePinned = Boolean(candidate.pinned) || candidate.status === "pinned";
     var existingPinned = Boolean(existing.pinned) || existing.status === "pinned";
     if (candidatePinned !== existingPinned) return candidatePinned;
+    var candidateActive = candidate.status !== "stale" && candidate.status !== "expired" && candidate.status !== "dismissed";
+    var existingActive = existing.status !== "stale" && existing.status !== "expired" && existing.status !== "dismissed";
+    if (candidateActive !== existingActive) return candidateActive;
     var candidateHasData = hasDisplayablePayloadData(candidate);
     var existingHasData = hasDisplayablePayloadData(existing);
     if (candidateHasData !== existingHasData) return candidateHasData;
@@ -355,7 +468,12 @@
       "preference/watchlist card",
       "no configured live",
       "no verified live",
-      "should stay on the dashboard watchlist"
+      "should stay on the dashboard watchlist",
+      "watched alerts quiet",
+      "watchdog paused",
+      "cron jobs are disabled",
+      "quality monitoring",
+      "current cron environment"
     ];
     for (var i = 0; i < internalPatterns.length; i += 1) {
       if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
@@ -369,7 +487,13 @@
       "hermes cron/jobs",
       "curator job",
       "scheduled job",
-      "no new update surfaced"
+      "no new update surfaced",
+      "watchdog",
+      "briefing blocked",
+      "briefing is blocked",
+      "cron injection",
+      "invisible unicode",
+      "u+200c"
     ];
     if (!hasDisplayablePayloadData(card) || payload.error) {
       for (var j = 0; j < operationalOnlyPatterns.length; j += 1) {
@@ -1069,7 +1193,7 @@
       else grouped.watching.push(card);
     });
 
-    root.appendChild(el("main", { className: "hpd-root" },
+    root.appendChild(el("main", { className: cx("hpd-root", themeClass(snapshot)) },
       el("header", { className: "hpd-header" },
         el("div", null,
           el("p", { className: "hpd-eyebrow", text: "Hermes Agent" }),

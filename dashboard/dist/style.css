@@ -59,6 +59,74 @@
   z-index: 1;
 }
 
+.hpd-root.hpd-theme-night {
+  --hpd-blue: #7db7ff;
+  --hpd-blue-deep: #d8ebff;
+  --hpd-blue-soft: #9dccff;
+  --hpd-cyan: #66e7ff;
+  --hpd-paper: #061426;
+  --hpd-paper-deep: #0b203c;
+  --hpd-ink: #d9ebff;
+  --hpd-muted: #91b8e8;
+  --hpd-line: rgba(125, 183, 255, 0.24);
+  --hpd-line-strong: rgba(125, 183, 255, 0.58);
+  --hpd-panel: rgba(7, 21, 42, 0.78);
+  --hpd-panel-strong: rgba(10, 30, 58, 0.9);
+  background:
+    radial-gradient(circle at 14% 28%, rgba(102, 231, 255, 0.12) 0 3px, transparent 4px),
+    radial-gradient(circle at 83% 73%, rgba(125, 183, 255, 0.1) 0 4px, transparent 5px),
+    repeating-linear-gradient(0deg, rgba(125, 183, 255, 0.045) 0 1px, transparent 1px 42px),
+    repeating-linear-gradient(90deg, rgba(125, 183, 255, 0.04) 0 1px, transparent 1px 42px),
+    linear-gradient(135deg, #061426, #102845);
+  box-shadow:
+    inset 0 0 0 1px rgba(125, 183, 255, 0.14),
+    inset 0 0 110px rgba(0, 0, 0, 0.34);
+  color-scheme: dark;
+}
+
+.hpd-root.hpd-theme-night::before {
+  background-image: radial-gradient(rgba(125, 183, 255, 0.15) 1px, transparent 1px);
+  opacity: 0.24;
+}
+
+.hpd-root.hpd-theme-night::after {
+  background:
+    linear-gradient(rgba(102, 231, 255, 0.18), rgba(102, 231, 255, 0.18)) 18% 31% / 18px 18px no-repeat,
+    linear-gradient(rgba(125, 183, 255, 0.2), rgba(125, 183, 255, 0.2)) 77% 16% / 16px 16px no-repeat,
+    linear-gradient(rgba(125, 183, 255, 0.14), rgba(125, 183, 255, 0.14)) 94% 87% / 12px 12px no-repeat;
+  opacity: 0.32;
+}
+
+.hpd-root.hpd-theme-night .hpd-header,
+.hpd-root.hpd-theme-night .hpd-sync,
+.hpd-root.hpd-theme-night .hpd-briefing,
+.hpd-root.hpd-theme-night .hpd-briefing-card,
+.hpd-root.hpd-theme-night .hpd-section-head,
+.hpd-root.hpd-theme-night .hpd-button-secondary,
+.hpd-root.hpd-theme-night .hpd-button-ghost,
+.hpd-root.hpd-theme-night .hpd-data-metric,
+.hpd-root.hpd-theme-night .hpd-data-label,
+.hpd-root.hpd-theme-night .hpd-card-expanded pre {
+  background: rgba(8, 25, 52, 0.68);
+}
+
+.hpd-root.hpd-theme-night .hpd-card,
+.hpd-root.hpd-theme-night .hpd-panel,
+.hpd-root.hpd-theme-night .hpd-empty,
+.hpd-root.hpd-theme-night .hpd-notice {
+  background: var(--hpd-panel);
+}
+
+.hpd-root.hpd-theme-night .hpd-button {
+  background: var(--hpd-blue);
+  color: #061426;
+}
+
+.hpd-root.hpd-theme-night .hpd-button-secondary,
+.hpd-root.hpd-theme-night .hpd-button-ghost {
+  color: var(--hpd-blue-deep);
+}
+
 .hpd-header {
   align-items: stretch;
   background: rgba(235, 246, 255, 0.56);
@@ -66,7 +134,7 @@
   display: grid;
   gap: 0;
   grid-template-columns: minmax(260px, 1fr) auto;
-  min-height: 72px;
+  min-height: 64px;
 }
 
 .hpd-header > div {
@@ -1091,7 +1159,7 @@
   }
 
   .hpd-header {
-    min-height: 56px;
+    min-height: 52px;
   }
 
   .hpd-header > div {
