@@ -1048,6 +1048,7 @@
 
 @media (min-width: 1180px) {
   .hpd-sections {
+    align-items: start;
     gap: 12px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
@@ -1106,17 +1107,27 @@
   }
 
   .hpd-sections {
-    gap: 10px;
+    align-items: start;
+    gap: 8px;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-template-areas:
-      "snapshot snapshot snapshot snapshot"
-      "now today this-week on-radar";
+      "snapshot snapshot snapshot snapshot";
+  }
+
+  .hpd-sections > .hpd-section {
+    grid-area: auto;
+  }
+
+  .hpd-section,
+  .hpd-card-grid {
+    align-content: start;
+    align-items: start;
   }
 
   .hpd-briefing-head,
   .hpd-section-head {
-    min-height: 34px;
-    padding: 7px 9px;
+    min-height: 30px;
+    padding: 5px 8px;
   }
 
   .hpd-briefing h2 {
@@ -1134,8 +1145,8 @@
 
   .hpd-briefing-card {
     gap: 5px;
-    min-height: 96px;
-    padding: 9px;
+    min-height: 82px;
+    padding: 7px;
   }
 
   .hpd-briefing-card strong {
@@ -1154,11 +1165,11 @@
   }
 
   .hpd-card {
-    gap: 6px;
-    max-height: 248px;
+    gap: 5px;
+    max-height: 230px;
     min-height: 0;
     overflow: hidden;
-    padding: 9px;
+    padding: 8px;
   }
 
   .hpd-card-top {
@@ -1167,7 +1178,7 @@
 
   .hpd-card-domain {
     font-size: 9px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
   }
 
   .hpd-card h3 {
@@ -1191,7 +1202,7 @@
     line-height: 1.32;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
   }
 
   .hpd-data {
@@ -1225,7 +1236,7 @@
   }
 
   .hpd-data-list {
-    max-height: 118px;
+    max-height: 104px;
     overflow: hidden;
   }
 
@@ -1256,8 +1267,7 @@
   .hpd-meta {
     font-size: 9px;
     gap: 5px;
-    max-height: 13px;
-    overflow: hidden;
+    display: none;
   }
 
   .hpd-meta span + span {
