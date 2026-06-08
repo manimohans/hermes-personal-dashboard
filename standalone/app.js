@@ -457,8 +457,15 @@
 
   function runningRefresh(snapshot) {
     var runs = snapshot ? (snapshot.refresh_runs || []) : [];
+    var resolvedJobs = {};
     for (var i = 0; i < runs.length; i += 1) {
+      var jobKey = runs[i].job_key || "__unknown__";
+      if (runs[i].status === "success" || runs[i].status === "error" || runs[i].status === "failed") {
+        resolvedJobs[jobKey] = true;
+        continue;
+      }
       if (runs[i].status === "running") {
+        if (resolvedJobs[jobKey]) continue;
         var started = Date.parse(runs[i].started_at || "");
         if (!Number.isFinite(started) || Date.now() - started < 20 * 60 * 1000) return runs[i];
       }
