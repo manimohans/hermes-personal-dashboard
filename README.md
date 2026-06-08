@@ -347,16 +347,20 @@ the dashboard tools.
 
 ## Storage
 
-Standalone state lives in:
-
-```text
-$HERMES_HOME/personal-dashboard/cards.db
-```
-
-When installed only as a Hermes plugin, state falls back to:
+The standalone web app and Hermes plugin share one dashboard database by
+default:
 
 ```text
 $HERMES_HOME/plugins/hermes-personal-dashboard/cards.db
+```
+
+This is important: cards written by Hermes jobs and cards read by the standalone
+web UI must come from the same file.
+
+To force a custom data location, set:
+
+```text
+HERMES_PERSONAL_DASHBOARD_DATA=/path/to/dashboard-data
 ```
 
 Main tables:

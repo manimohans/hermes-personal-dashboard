@@ -395,10 +395,10 @@ def main() -> int:
     args = parser.parse_args()
     if args.hermes_home:
         os.environ["HERMES_HOME"] = str(Path(args.hermes_home).expanduser())
-    os.environ.setdefault("HERMES_PERSONAL_DASHBOARD_DATA", str(core.hermes_home() / "personal-dashboard"))
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Hermes Personal Dashboard running at http://{args.host}:{args.port}", flush=True)
     print(f"Reading Hermes data from {core.hermes_home()}", flush=True)
+    print(f"Dashboard database: {core.db_path()}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
