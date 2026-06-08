@@ -246,10 +246,19 @@
     const payload = card.payload || {};
     const domain = String(card.domain || "").toLowerCase();
     if (domain === "weather") {
-      return "weather:" + (normalizeKey(payload.location) || "current");
+      let location = normalizeKey(payload.location);
+      if (!location) {
+        const title = String(card.title || "");
+        const match = title.match(/^(.+?)\s+(?:weather|now|conditions)\b/i) || title.match(/^(.+?):/);
+        location = normalizeKey(match && match[1]);
+      }
+      return "weather:" + (location || "current");
     }
     if ((domain === "alerts" || domain === "sensors" || domain === "sensor") && hasTemperatureSignal(card)) {
       return "sensor:machine-temperature";
+    }
+    if (domain === "calendar") {
+      return "calendar:current";
     }
     return "";
   }
@@ -269,12 +278,12 @@
     const candidatePinned = Boolean(candidate.pinned) || candidate.status === "pinned";
     const existingPinned = Boolean(existing.pinned) || existing.status === "pinned";
     if (candidatePinned !== existingPinned) return candidatePinned;
-    const candidateTime = cardUpdatedMs(candidate);
-    const existingTime = cardUpdatedMs(existing);
-    if (Math.abs(candidateTime - existingTime) > 2 * 60 * 1000) return candidateTime > existingTime;
     const candidateHasData = hasDisplayablePayloadData(candidate);
     const existingHasData = hasDisplayablePayloadData(existing);
     if (candidateHasData !== existingHasData) return candidateHasData;
+    const candidateTime = cardUpdatedMs(candidate);
+    const existingTime = cardUpdatedMs(existing);
+    if (Math.abs(candidateTime - existingTime) > 2 * 60 * 1000) return candidateTime > existingTime;
     return cardScore(candidate) > cardScore(existing);
   }
 
@@ -325,7 +334,8 @@
       "refresh failed",
       "hermes cron/jobs",
       "curator job",
-      "scheduled job"
+      "scheduled job",
+      "no new update surfaced"
     ];
     if (!hasDisplayablePayloadData(card) || payload.error) {
       for (let j = 0; j < operationalOnlyPatterns.length; j += 1) {

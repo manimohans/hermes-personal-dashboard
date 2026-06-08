@@ -279,10 +279,19 @@
     var payload = card.payload || {};
     var domain = String(card.domain || "").toLowerCase();
     if (domain === "weather") {
-      return "weather:" + (normalizeKey(payload.location) || "current");
+      var location = normalizeKey(payload.location);
+      if (!location) {
+        var title = String(card.title || "");
+        var match = title.match(/^(.+?)\s+(?:weather|now|conditions)\b/i) || title.match(/^(.+?):/);
+        location = normalizeKey(match && match[1]);
+      }
+      return "weather:" + (location || "current");
     }
     if ((domain === "alerts" || domain === "sensors" || domain === "sensor") && hasTemperatureSignal(card)) {
       return "sensor:machine-temperature";
+    }
+    if (domain === "calendar") {
+      return "calendar:current";
     }
     return "";
   }
@@ -302,12 +311,12 @@
     var candidatePinned = Boolean(candidate.pinned) || candidate.status === "pinned";
     var existingPinned = Boolean(existing.pinned) || existing.status === "pinned";
     if (candidatePinned !== existingPinned) return candidatePinned;
-    var candidateTime = cardUpdatedMs(candidate);
-    var existingTime = cardUpdatedMs(existing);
-    if (Math.abs(candidateTime - existingTime) > 2 * 60 * 1000) return candidateTime > existingTime;
     var candidateHasData = hasDisplayablePayloadData(candidate);
     var existingHasData = hasDisplayablePayloadData(existing);
     if (candidateHasData !== existingHasData) return candidateHasData;
+    var candidateTime = cardUpdatedMs(candidate);
+    var existingTime = cardUpdatedMs(existing);
+    if (Math.abs(candidateTime - existingTime) > 2 * 60 * 1000) return candidateTime > existingTime;
     return cardScore(candidate) > cardScore(existing);
   }
 
@@ -358,7 +367,8 @@
       "refresh failed",
       "hermes cron/jobs",
       "curator job",
-      "scheduled job"
+      "scheduled job",
+      "no new update surfaced"
     ];
     if (!hasDisplayablePayloadData(card) || payload.error) {
       for (var j = 0; j < operationalOnlyPatterns.length; j += 1) {
