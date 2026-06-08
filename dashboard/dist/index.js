@@ -285,7 +285,7 @@
     return h("main", { className: "hpd-root" },
       h("header", { className: "hpd-header" },
         h("div", null,
-          h("p", { className: "hpd-eyebrow" }, "Hermes"),
+          h("p", { className: "hpd-eyebrow" }, "Hermes Agent"),
           h("h1", null, "Personal Dashboard")
         ),
         h("div", { className: "hpd-header-actions" },
