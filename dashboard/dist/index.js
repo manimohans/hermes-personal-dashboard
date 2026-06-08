@@ -155,6 +155,15 @@
     );
   }
 
+  function NoticePanel(props) {
+    const lines = String(props.message || "Dashboard notice.").split("\n");
+    const title = lines.shift() || "Dashboard notice";
+    return h("div", { className: "hpd-notice" },
+      h("strong", { className: "hpd-notice-title" }, title),
+      lines.length ? h("pre", { className: "hpd-notice-detail" }, lines.join("\n")) : null
+    );
+  }
+
   function runningRefresh(snapshot) {
     const runs = snapshot ? (snapshot.refresh_runs || []) : [];
     for (let i = 0; i < runs.length; i += 1) {
@@ -275,7 +284,7 @@
       ),
       h("div", { className: "hpd-start-actions" },
         h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan signals"),
-        h(Button, { variant: "secondary", onClick: props.onCreateCron }, "Create refresh jobs")
+        h(Button, { variant: "secondary", onClick: props.onCreateCron, disabled: props.loading }, "Create refresh jobs")
       )
     );
   }
@@ -403,6 +412,7 @@
     const [loading, setLoading] = React.useState(true);
     const [mutating, setMutating] = React.useState(false);
     const [error, setError] = React.useState("");
+    const [notice, setNotice] = React.useState("");
 
     const load = React.useCallback(function () {
       setLoading(true);
@@ -430,8 +440,32 @@
 
     function mutate(promise) {
       setMutating(true);
+      setNotice("");
       return promise
         .then(load)
+        .catch(function (err) { setError(err.message || String(err)); })
+        .finally(function () { setMutating(false); });
+    }
+
+    function createRefreshJobs() {
+      setMutating(true);
+      setNotice("");
+      return request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) })
+        .then(function (result) {
+          setError("");
+          if (result && result.error) {
+            setNotice([
+              "Refresh jobs were not created.",
+              result.error,
+              result.next_step || "Run /personal-dashboard create-jobs inside Hermes."
+            ].join("\n"));
+          } else if (result && result.skipped) {
+            setNotice("Refresh jobs already exist.");
+          } else {
+            setNotice("Refresh jobs created.\nHermes will update cards when the jobs run.");
+          }
+          return load();
+        })
         .catch(function (err) { setError(err.message || String(err)); })
         .finally(function () { setMutating(false); });
     }
@@ -465,6 +499,7 @@
       ),
       h(SyncStatus, { snapshot: snapshot, loading: loading, mutating: mutating }),
       error ? h(ErrorPanel, { message: error }) : null,
+      notice ? h(NoticePanel, { message: notice }) : null,
       snapshot ? h(React.Fragment, null,
         h(CurationPanel, {
           automation: snapshot.automation || {},
@@ -478,7 +513,7 @@
               body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false }),
             }));
           },
-          onCreateCron: function () { mutate(request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) })); },
+          onCreateCron: createRefreshJobs,
         }),
         h("div", { className: "hpd-dashboard-grid" },
           h("div", { className: "hpd-main-column" },

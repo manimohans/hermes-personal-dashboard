@@ -72,7 +72,13 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
         from cron import jobs as cron_jobs
     except Exception as exc:
         core.put_preferences({"cron_unavailable": str(exc)})
-        return {"created": [], "existing": existing, "skipped": True, "error": f"cron integration unavailable: {exc}"}
+        return {
+            "created": [],
+            "existing": existing,
+            "skipped": True,
+            "error": f"cron integration unavailable: {exc}",
+            "next_step": "Run this command inside Hermes where the cron runtime is available, or reinstall the plugin bundle with `./run.sh`.",
+        }
 
     schedules = {
         "morning": _parse_hhmm(prefs.get("briefing_time") or "07:30"),

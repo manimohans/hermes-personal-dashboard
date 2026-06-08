@@ -235,7 +235,7 @@ The standalone dashboard includes correction controls, not setup controls:
 
 - **Refresh**: reload the snapshot
 - **Scan signals**: force a memory/session/cron signal scan
-- **Create refresh jobs**: install autonomous recurring jobs when Hermes cron integration is available
+- **Create refresh jobs**: install autonomous recurring jobs when Hermes cron integration is available; if the standalone server cannot reach Hermes cron, the dashboard shows the exact failure and the next command to run inside Hermes
 - **Pin / Unpin**: keep a card visible
 - **Dismiss**: hide a card
 - **Hide** on inferred context: stop showing that inferred item
@@ -292,6 +292,18 @@ Important routes:
 | `GET /refresh-runs` | list refresh history |
 | `POST /refresh-runs` | record refresh history |
 | `POST /automation/ensure-jobs` | create autonomous refresh jobs |
+
+The standalone server can only create refresh jobs when it is running in an
+environment where Hermes exposes its cron module. If the dashboard says
+`cron integration unavailable`, do not wait for jobs that were not created. Open
+Hermes and run:
+
+```text
+/personal-dashboard create-jobs
+```
+
+Cards appear after a Hermes curator job actually runs and writes them through
+the dashboard tools.
 
 ## Storage
 

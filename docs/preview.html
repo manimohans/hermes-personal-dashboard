@@ -280,8 +280,13 @@
         if (path === "/context") return jsonResponse({ context_items: snapshot().context_items });
         if (path === "/context/refresh") return jsonResponse(addScanResult());
         if (path === "/automation/ensure-jobs") {
-          state.preferences.cron_jobs = { morning: "preview-morning", alerts: "preview-alerts", weekend: "preview-weekend" };
-          return jsonResponse({ created: [{ id: "preview-morning" }, { id: "preview-alerts" }, { id: "preview-weekend" }], existing: {}, skipped: false });
+          return jsonResponse({
+            created: [],
+            existing: {},
+            skipped: true,
+            error: "cron integration unavailable in preview",
+            next_step: "Run /personal-dashboard create-jobs inside Hermes, or use a Hermes runtime that exposes cron."
+          });
         }
         if (path.indexOf("/context/") === 0 && path.endsWith("/hide")) {
           var contextId = decodeURIComponent(path.split("/")[2]);

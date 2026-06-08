@@ -6,7 +6,8 @@
     snapshot: null,
     loading: true,
     mutating: false,
-    error: ""
+    error: "",
+    notice: ""
   };
 
   function cx() {
@@ -227,14 +228,50 @@
     );
   }
 
+  function noticePanel(message) {
+    var lines = String(message || "").split("\n");
+    return el("div", { className: "hpd-notice" },
+      el("strong", { className: "hpd-notice-title", text: lines.shift() || "Dashboard notice" }),
+      lines.length ? el("pre", { className: "hpd-notice-detail", text: lines.join("\n") }) : null
+    );
+  }
+
   function mutate(promise) {
     state.mutating = true;
+    state.notice = "";
     render();
     return promise.then(load).catch(function (err) {
       state.error = err.message || String(err);
       state.mutating = false;
       render();
     });
+  }
+
+  function createRefreshJobs() {
+    state.mutating = true;
+    state.notice = "";
+    render();
+    return request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) })
+      .then(function (result) {
+        state.error = "";
+        if (result.error) {
+          state.notice = [
+            "Refresh jobs were not created.",
+            result.error,
+            result.next_step || "Run /personal-dashboard create-jobs inside Hermes."
+          ].join("\n");
+        } else if (result.skipped) {
+          state.notice = "Refresh jobs already exist.";
+        } else {
+          state.notice = "Refresh jobs created.\nHermes will update cards when the jobs run.";
+        }
+        return load();
+      })
+      .catch(function (err) {
+        state.error = err.message || String(err);
+        state.mutating = false;
+        render();
+      });
   }
 
   function load() {
@@ -323,9 +360,7 @@
             body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false })
           }));
         }, state.mutating),
-        button("Create refresh jobs", "secondary", function () {
-          mutate(request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) }));
-        }, state.mutating)
+        button("Create refresh jobs", "secondary", createRefreshJobs, state.mutating)
       )
     );
   }
@@ -467,6 +502,7 @@
       ),
       syncStatus(snapshot),
       state.error ? errorPanel(state.error) : null,
+      state.notice ? noticePanel(state.notice) : null,
       snapshot ? [
         curationPanel(snapshot, cards, contextItems),
         el("div", { className: "hpd-dashboard-grid" },

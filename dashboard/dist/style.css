@@ -284,7 +284,8 @@
 .hpd-panel,
 .hpd-start,
 .hpd-empty,
-.hpd-error {
+.hpd-error,
+.hpd-notice {
   background: var(--hpd-panel);
   border: 1px solid var(--hpd-line);
   border-radius: 0;
@@ -610,6 +611,34 @@
 
 .hpd-error-detail {
   color: #991b1b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.hpd-notice {
+  background: rgba(232, 250, 255, 0.84);
+  border-color: rgba(4, 167, 206, 0.42);
+  color: var(--hpd-blue-deep);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.hpd-notice-title {
+  color: var(--hpd-blue);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hpd-notice-detail {
+  color: var(--hpd-blue-deep);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.45;

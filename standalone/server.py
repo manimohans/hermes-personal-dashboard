@@ -79,7 +79,13 @@ def create_standard_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str
         from cron import jobs as cron_jobs  # type: ignore
     except Exception as exc:
         core.put_preferences({"cron_unavailable": str(exc)})
-        return {"created": [], "existing": existing, "skipped": True, "error": f"cron integration unavailable: {exc}"}
+        return {
+            "created": [],
+            "existing": existing,
+            "skipped": True,
+            "error": f"cron integration unavailable: {exc}",
+            "next_step": "Open Hermes and run `/personal-dashboard create-jobs`. The standalone server cannot create Hermes cron jobs in this environment.",
+        }
 
     schedules = {
         "morning": parse_hhmm(prefs.get("briefing_time") or body.get("briefing_time") or "07:30"),
