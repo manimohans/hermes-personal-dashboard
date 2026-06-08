@@ -1,6 +1,6 @@
 name: hermes-personal-dashboard
 version: 0.1.0
-description: "Generic personal daily-briefing dashboard for Hermes Agent. Stores structured cards that Hermes jobs update through plugin tools."
+description: "Zero-setup personal dashboard for Hermes Agent. Reflects useful context from existing Hermes memory, sessions, cron jobs, and agent work."
 author: "Hermes Personal Dashboard contributors"
 kind: standalone
 tools:
@@ -10,15 +10,12 @@ tools:
   - personal_dashboard_add_evidence
   - personal_dashboard_list_cards
   - personal_dashboard_record_refresh
-  - personal_dashboard_suggest_card
-  - personal_dashboard_upsert_topic
-  - personal_dashboard_get_topics
-  - personal_dashboard_get_preferences
+  - personal_dashboard_upsert_context
+  - personal_dashboard_list_context
+  - personal_dashboard_hide_context
   - personal_dashboard_get_snapshot
-  - personal_dashboard_save_setup
-  - personal_dashboard_add_starter_topics
-  - personal_dashboard_create_sample_cards
+  - personal_dashboard_refresh_from_hermes
+  - personal_dashboard_get_preferences
   - personal_dashboard_create_cron_jobs
-  - personal_dashboard_quickstart
 commands:
   - personal-dashboard

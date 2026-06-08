@@ -1,95 +1,98 @@
 ---
 name: briefing-curator
-description: Update Hermes Personal Dashboard cards from user-configured topics, preferences, and available Hermes tools.
-version: 0.1.0
+description: Refresh Hermes Personal Dashboard cards from existing Hermes memory, sessions, cron output, and prior agent work with no user setup.
+version: 0.2.0
 author: Hermes Personal Dashboard contributors
 license: MIT
 metadata:
   hermes:
-    tags: [Dashboard, Daily Briefing, Personal Agent, Cron, Memory]
+    tags: [Dashboard, Daily Briefing, Personal Agent, Cron, Memory, Sessions]
 ---
 
 # Hermes Personal Dashboard Briefing Curator
 
 Use this skill when a cron job or user request asks Hermes to refresh the
-Personal Dashboard. The dashboard is generic: only use topics and preferences
-the user configured or explicitly accepted.
+Personal Dashboard. The dashboard is zero-setup: do not ask the user to choose
+interests, sources, tickers, teams, locations, or schedules before producing
+cards.
 
 ## Operating Rules
 
-- Read preferences with `personal_dashboard_get_preferences`.
-- Read configured topics with `personal_dashboard_get_topics`.
-- Use `personal_dashboard_quickstart` only when the user wants first-time
-  setup help.
-- Use `personal_dashboard_save_setup` when the user asks you to configure
-  briefing time, location, timezone, alert frequency, calendar preference, or
-  weekend planning from chat.
-- Fetch data with the best available Hermes tools and skills for each enabled
-  topic. Do not invent provider access that is not configured.
-- Write results with `personal_dashboard_upsert_card`.
-- Adjust existing cards with `personal_dashboard_patch_card` rather than
-  rewriting the full card when only status, pinning, priority, or summary
-  changed.
-- Attach important source evidence with `personal_dashboard_add_evidence`.
-- Record the refresh outcome with `personal_dashboard_record_refresh`.
-- Create or update topics with `personal_dashboard_upsert_topic` only when the
-  user explicitly asks for a topic to be added.
-- Create suggestions with `personal_dashboard_suggest_card` when a possible
-  topic or card is inferred but not confirmed by the user.
-- Do not create visible cards from memory or session inference alone.
-- Use `personal_dashboard_get_snapshot` when you need cards, topics,
-  preferences, refresh runs, and suggestions in one call.
+- Start with `personal_dashboard_refresh_from_hermes`. This scans existing
+  Hermes memory, session history, cron jobs/output, and prior agent work.
+- Read inferred context with `personal_dashboard_list_context`.
+- Treat inferred context as the user's already-provided intent. Use it to decide
+  which live data is worth fetching with available Hermes tools.
+- Write useful visible cards with `personal_dashboard_upsert_card`.
+- Use `personal_dashboard_upsert_context` when you discover a durable relevance
+  signal from Hermes context that the deterministic scanner missed.
+- Adjust existing cards with `personal_dashboard_patch_card` when only status,
+  priority, pinning, freshness, or summary changed.
+- Attach important provenance with `personal_dashboard_add_evidence`.
+- Record the refresh result with `personal_dashboard_record_refresh`.
+- Never require setup. User controls are for correction only: hide, dismiss,
+  pin, unpin, or ask Hermes to ignore a domain.
+
+## What Belongs On The Dashboard
+
+Prefer high-signal cards that explain what matters now:
+
+- `now`: urgent alerts, weather warnings, threshold breaches, schedule conflicts,
+  time-sensitive reminders, breaking updates.
+- `today`: daily briefings, family/school/menu updates, news summaries, calendar
+  items, morning context.
+- `week`: weekend plans, upcoming games, events, travel, deadlines.
+- `watching`: stocks, teams, projects, GitHub issues, recurring beats, interests
+  Hermes has learned are relevant.
+
+Every visible card should include:
+
+- a stable `id` so future runs update the same card
+- a concise `title`
+- a one-to-three sentence `summary`
+- `source_label` or evidence when available
+- `why_shown` that points to the inferred Hermes context
+- freshness through `updated_at` and optional `valid_until`
 
 ## Card Writing Pattern
 
-Use stable ids so repeated runs update cards instead of duplicating them:
-
 ```json
 {
-  "id": "news-ai-top-items",
+  "id": "auto-context-news-ai-briefing",
   "domain": "news",
-  "title": "AI news update",
-  "summary": "Three notable updates since the last refresh.",
+  "title": "AI news briefing",
+  "summary": "Three high-signal AI updates are worth showing this morning.",
   "priority": "medium",
   "status": "active",
   "valid_until": "2026-06-08T15:00:00Z",
-  "source_label": "Configured news sources",
-  "why_shown": "Configured topic: AI news",
+  "source_label": "Hermes memory + web search",
+  "why_shown": "Auto-discovered from Hermes memory/session history.",
   "payload": {
-    "section": "today"
+    "section": "today",
+    "auto_discovered": true
   }
 }
 ```
 
-Recommended dashboard sections in `payload.section`:
-
-- `now`: urgent alerts, weather warnings, high-priority schedule items.
-- `today`: daily briefing, calendar, menus, top news.
-- `week`: weekend plans, upcoming games, events, deadlines.
-- `watching`: tracked topics, teams, stocks, projects, long-running watches.
-
-Pin only cards that are important to keep visible across refreshes. Do not pin
-routine cards unless the user asks.
-
 ## Refresh Pattern
 
-At the start of a job:
+At the start:
 
 ```json
 {
-  "job_key": "morning-briefing",
+  "job_key": "autonomous-morning-briefing",
   "status": "running",
-  "summary": "Refreshing configured dashboard topics."
+  "summary": "Refreshing dashboard from Hermes context."
 }
 ```
 
-At the end of a successful job:
+At the end:
 
 ```json
 {
-  "job_key": "morning-briefing",
+  "job_key": "autonomous-morning-briefing",
   "status": "success",
-  "summary": "Updated weather, news, calendar, and watched topics."
+  "summary": "Updated dashboard cards from inferred Hermes context."
 }
 ```
 
@@ -97,25 +100,31 @@ On failure, record the failed source instead of silently skipping it:
 
 ```json
 {
-  "job_key": "stock-alerts",
+  "job_key": "autonomous-alert-refresh",
   "status": "error",
-  "summary": "Stock alert refresh failed.",
+  "summary": "Dashboard alert refresh failed.",
   "error": "Market data provider unavailable."
 }
 ```
 
 ## Domain Guidance
 
-- **News:** Summarize only configured topics and sources. Prefer the most recent
-  original publication times. Include source labels and URLs when possible.
-- **Weather:** Use the configured location. Mark alerts as high or critical.
-- **Stocks:** Use configured tickers. Prioritize threshold alerts and unusual
-  movement over routine prices.
-- **Sports:** Use configured teams, leagues, and competitions. Surface next
-  fixtures, recent results, injuries, and high-signal news.
-- **Calendar/Planning:** Use configured calendar access only. Avoid exposing
-  sensitive details unless the user has opted into calendar cards.
-- **Projects:** Use configured repositories, issue filters, or task systems.
+- **News:** Infer beats from Hermes memory/session history. Use recent original
+  publication times. Do not produce generic world-news filler.
+- **Weather:** Use the location Hermes already knows, if present in memory,
+  sessions, user profile, or recent jobs. Otherwise only show weather context
+  if Hermes has a usable location.
+- **Stocks:** Use tickers, portfolio interests, or threshold preferences Hermes
+  already knows. Prioritize unusual movement and configured alerts over routine
+  prices.
+- **Sports:** Use teams, leagues, and competitions inferred from Hermes context.
+  Surface next fixtures, recent results, injuries, and high-signal news.
+- **Family/School:** Surface menus, schedules, daycare/school summaries, and
+  reminders only when Hermes already has that context.
+- **Calendar/Planning:** Use available calendar tools only when the user's Hermes
+  installation already grants access. Avoid unnecessary sensitive detail.
+- **Projects:** Use repositories, issues, tasks, and recurring project work
+  inferred from sessions or memory.
 
 ## Suggested Job Prompts
 
@@ -123,22 +132,21 @@ Morning briefing:
 
 ```text
 Use hermes-personal-dashboard:briefing-curator. Refresh the Personal Dashboard
-for the user's configured morning briefing topics. Update cards and record the
-refresh result.
+from existing Hermes memory, sessions, cron output, and prior agent work. Do not
+ask the user to configure interests. Update cards and record the refresh result.
 ```
 
 Alerts:
 
 ```text
 Use hermes-personal-dashboard:briefing-curator. Refresh time-sensitive dashboard
-alerts for configured topics only. Update existing cards where possible and
+alerts from inferred Hermes context. Update existing cards where possible and
 record the refresh result.
 ```
 
 Weekend planner:
 
 ```text
-Use hermes-personal-dashboard:briefing-curator. Refresh weekend planning cards
-from configured calendar, weather, events, sports, and interest topics. Record
-the refresh result.
+Use hermes-personal-dashboard:briefing-curator. Refresh weekend and planning
+cards from whatever Hermes already knows is relevant. Record the refresh result.
 ```

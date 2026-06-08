@@ -84,57 +84,17 @@ class CoreTest(unittest.TestCase):
         cards = core.list_cards(conn=self.conn)
         self.assertEqual(cards[0]["status"], "active")
 
-    def test_topic_crud(self) -> None:
-        topic = core.upsert_topic(
-            {
-                "domain": "sports",
-                "label": "Example team",
-                "query": "example team fixtures",
-                "cadence": "daily",
-            },
-            self.conn,
-        )
-        self.assertTrue(topic["enabled"])
-        patched = core.patch_topic(topic["id"], {"enabled": False}, self.conn)
-        self.assertFalse(patched["enabled"])
-        self.assertEqual(core.delete_topic(topic["id"], self.conn)["deleted"], 1)
-
-    def test_starter_topics_are_generic_and_idempotent(self) -> None:
-        first = core.add_starter_topics(self.conn)
-        second = core.add_starter_topics(self.conn)
-        topics = core.list_topics(conn=self.conn)
-        self.assertEqual(first["count"], 6)
-        self.assertEqual(second["count"], 6)
-        self.assertEqual(len(topics), 6)
-        self.assertEqual({topic["domain"] for topic in topics}, {"calendar", "news", "planning", "sports", "stocks", "weather"})
-
-    def test_preferences_save_and_setup_status(self) -> None:
-        result = core.save_setup(
-            {
-                "briefing_time": "08:15",
-                "timezone": "America/Los_Angeles",
-                "location": "San Francisco",
-                "topics": [{"domain": "news", "label": "Technology", "query": "technology news"}],
-            },
-            self.conn,
-        )
-        self.assertTrue(result["configured"])
-        prefs = core.get_preferences(self.conn)
-        self.assertEqual(prefs["briefing_time"], "08:15")
-        self.assertEqual(len(core.list_topics(conn=self.conn)), 1)
-
-    def test_setup_save_preserves_existing_cron_jobs_when_omitted(self) -> None:
+    def test_preferences_preserve_cron_metadata(self) -> None:
         core.put_preferences(
             {
                 "cron_jobs": {"morning": "abc123"},
-                "source_preferences": {"news": ["rss"]},
+                "last_auto_refresh_at": "2026-06-08T00:00:00Z",
             },
             self.conn,
         )
-        core.save_setup({"briefing_time": "09:00"}, self.conn)
         prefs = core.get_preferences(self.conn)
         self.assertEqual(prefs["cron_jobs"], {"morning": "abc123"})
-        self.assertEqual(prefs["source_preferences"], {"news": ["rss"]})
+        self.assertEqual(prefs["last_auto_refresh_at"], "2026-06-08T00:00:00Z")
 
     def test_evidence_and_refresh_runs(self) -> None:
         core.upsert_card(
@@ -153,45 +113,56 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(run["status"], "success")
         self.assertEqual(len(core.list_refresh_runs(conn=self.conn)), 1)
 
-    def test_sample_cards_are_visible_and_idempotent(self) -> None:
-        first = core.create_sample_cards(self.conn)
-        second = core.create_sample_cards(self.conn)
+    def test_refresh_from_hermes_context_creates_visible_cards(self) -> None:
+        memory_dir = Path(self.tmp.name) / "memories"
+        memory_dir.mkdir(parents=True)
+        (memory_dir / "MEMORY.md").write_text(
+            "- User wants AI news in the morning.\n"
+            "- User tracks stock alerts and weekend planning.\n",
+            encoding="utf-8",
+        )
+        result = core.refresh_from_hermes_context(
+            include_sessions=False,
+            include_cron=False,
+            create_cards=True,
+            conn=self.conn,
+        )
+        self.assertEqual(result["sources"], 1)
+        self.assertGreaterEqual(len(result["context_items"]), 3)
         cards = core.list_cards(conn=self.conn)
-        self.assertEqual(first["count"], 4)
-        self.assertEqual(second["count"], 4)
-        self.assertEqual(len(cards), 4)
-        self.assertTrue(all((card.get("payload") or {}).get("sample") for card in cards))
+        domains = {card["domain"] for card in cards}
+        self.assertIn("news", domains)
+        self.assertIn("stocks", domains)
+        self.assertIn("planning", domains)
+        self.assertTrue(all((card.get("payload") or {}).get("auto_discovered") for card in cards))
 
-    def test_suggestions_accept_card_and_topic(self) -> None:
-        suggestion = core.suggest(
+    def test_hide_context_dismisses_generated_card(self) -> None:
+        item = core.upsert_context_item(
             {
-                "kind": "card",
-                "title": "Suggested card",
-                "payload": {
-                    "card": {
-                        "id": "suggested-card",
-                        "domain": "news",
-                        "title": "Suggested",
-                        "summary": "Accepted.",
-                    },
-                    "topic": {"domain": "news", "label": "Suggested topic"},
-                },
+                "id": "context-news-ai",
+                "domain": "news",
+                "label": "AI news briefing",
+                "summary": "From memory.",
+                "source_types": ["memory"],
+                "score": 1.0,
             },
             self.conn,
         )
-        accepted = core.accept_suggestion(suggestion["id"], self.conn)
-        self.assertEqual(accepted["suggestion"]["status"], "accepted")
-        self.assertIsNotNone(core.get_card("suggested-card", self.conn))
-        self.assertEqual(len(core.list_topics(conn=self.conn)), 1)
+        core.sync_cards_from_context([item], self.conn)
+        self.assertEqual(len(core.list_cards(conn=self.conn)), 1)
+        hidden = core.hide_context_item(item["id"], self.conn)
+        self.assertEqual(hidden["status"], "hidden")
+        self.assertEqual(len(core.list_cards(conn=self.conn)), 0)
 
-    def test_discover_suggestions_from_memory_is_pending_only(self) -> None:
+    def test_dashboard_snapshot_auto_refreshes_without_setup(self) -> None:
         memory_dir = Path(self.tmp.name) / "memories"
         memory_dir.mkdir(parents=True)
-        (memory_dir / "MEMORY.md").write_text("- User follows an example soccer team.\n", encoding="utf-8")
-        result = core.discover_suggestions_from_memory(self.conn)
-        self.assertEqual(result["count"], 1)
-        self.assertEqual(len(core.list_suggestions(conn=self.conn)), 1)
-        self.assertEqual(len(core.list_cards(conn=self.conn)), 0)
+        (memory_dir / "USER.md").write_text("- User follows soccer fixtures.\n", encoding="utf-8")
+        snapshot = core.dashboard_snapshot(auto_refresh=True)
+        self.assertFalse(snapshot["status"]["requires_configuration"])
+        self.assertEqual(snapshot["status"]["mode"], "autonomous")
+        self.assertGreaterEqual(len(snapshot["context_items"]), 1)
+        self.assertGreaterEqual(len(snapshot["cards"]), 1)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ CARD_PROPERTIES = {
         "type": "string",
         "description": "Stable card id. Reuse the same id to update the same card on future runs.",
     },
-    "topic_id": {"type": "string", "description": "Optional topic id this card belongs to."},
+    "context_id": {"type": "string", "description": "Optional inferred context id this card belongs to."},
     "domain": {
         "type": "string",
         "description": "Card domain such as news, weather, stocks, sports, calendar, planning, project, or alerts.",
@@ -113,115 +113,91 @@ PERSONAL_DASHBOARD_RECORD_REFRESH = {
     },
 }
 
-PERSONAL_DASHBOARD_SUGGEST_CARD = {
-    "name": "personal_dashboard_suggest_card",
-    "description": "Create a pending suggestion. Suggestions are not visible cards until the user accepts them.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "id": {"type": "string"},
-            "kind": {"type": "string", "description": "Suggestion kind, typically card or topic."},
-            "title": {"type": "string"},
-            "summary": {"type": "string"},
-            "payload": {"type": "object", "description": "Suggested card/topic payload."},
-        },
-        "required": ["title"],
+CONTEXT_PROPERTIES = {
+    "id": {"type": "string", "description": "Stable inferred context id."},
+    "domain": {
+        "type": "string",
+        "description": "Inferred domain such as news, weather, stocks, sports, calendar, family, planning, projects, or alerts.",
     },
+    "label": {"type": "string", "description": "Short human-readable description of what Hermes appears to know or watch."},
+    "summary": {"type": "string", "description": "Why this context appears relevant."},
+    "evidence": {"type": "array", "items": {"type": "object"}, "description": "Source snippets from Hermes memory, sessions, or cron output."},
+    "source_types": {"type": "array", "items": {"type": "string"}, "description": "Source types such as memory, session, cron, or user_profile."},
+    "confidence": {"type": "number", "description": "Confidence from 0 to 1."},
+    "score": {"type": "number", "description": "Internal relevance score."},
+    "status": {"type": "string", "enum": ["active", "hidden"]},
+    "payload": {"type": "object"},
 }
 
-PERSONAL_DASHBOARD_UPSERT_TOPIC = {
-    "name": "personal_dashboard_upsert_topic",
-    "description": "Create or update a configured dashboard topic.",
+PERSONAL_DASHBOARD_UPSERT_CONTEXT = {
+    "name": "personal_dashboard_upsert_context",
+    "description": "Create or update an inferred dashboard context item from Hermes memory/session knowledge. This is not user setup.",
     "parameters": {
         "type": "object",
-        "properties": {
-            "id": {"type": "string", "description": "Optional stable topic id."},
-            "domain": {"type": "string", "description": "Topic domain such as news, weather, stocks, sports, calendar, planning, or project."},
-            "label": {"type": "string", "description": "Short user-facing topic label."},
-            "query": {"type": "string", "description": "What Hermes should fetch or summarize for this topic."},
-            "enabled": {"type": "boolean", "description": "Whether this topic should be used by refresh jobs."},
-            "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
-            "cadence": {"type": "string", "description": "Suggested cadence such as alerts, daily, weekly, or manual."},
-            "config": {"type": "object", "description": "Optional structured topic settings."},
-        },
+        "properties": CONTEXT_PROPERTIES,
         "required": ["domain", "label"],
     },
 }
 
-PERSONAL_DASHBOARD_GET_TOPICS = {
-    "name": "personal_dashboard_get_topics",
-    "description": "Return configured dashboard topics and interests.",
-    "parameters": {"type": "object", "properties": {"include_disabled": {"type": "boolean"}}},
-}
-
-PERSONAL_DASHBOARD_GET_PREFERENCES = {
-    "name": "personal_dashboard_get_preferences",
-    "description": "Return dashboard setup preferences such as location, briefing time, and source settings.",
-    "parameters": {"type": "object", "properties": {}},
-}
-
-PERSONAL_DASHBOARD_GET_SNAPSHOT = {
-    "name": "personal_dashboard_get_snapshot",
-    "description": "Return cards, topics, preferences, refresh runs, suggestions, and setup status in one snapshot.",
-    "parameters": {"type": "object", "properties": {}},
-}
-
-PERSONAL_DASHBOARD_SAVE_SETUP = {
-    "name": "personal_dashboard_save_setup",
-    "description": "Save setup preferences and optional topics for the dashboard.",
+PERSONAL_DASHBOARD_LIST_CONTEXT = {
+    "name": "personal_dashboard_list_context",
+    "description": "List context items automatically inferred from Hermes memory, sessions, and cron output.",
     "parameters": {
         "type": "object",
         "properties": {
-            "briefing_time": {"type": "string", "description": "Preferred daily briefing time, such as 07:30."},
-            "timezone": {"type": "string", "description": "IANA timezone, such as America/Los_Angeles."},
-            "location": {"type": "string", "description": "User's configured location for weather and planning."},
-            "alert_frequency": {"type": "string", "description": "Alert cadence such as hourly, 30m, 15m, or daily."},
-            "calendar_enabled": {"type": "boolean", "description": "Whether dashboard refreshes may use configured calendar access."},
-            "weekend_planner": {"type": "boolean", "description": "Whether to create weekend planning cards and jobs."},
-            "source_preferences": {"type": "object", "description": "Optional source settings by domain."},
-            "topics": {"type": "array", "items": {"type": "object"}, "description": "Optional topics to create or update."},
+            "include_hidden": {"type": "boolean", "description": "Include hidden context items."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500},
         },
     },
 }
 
-PERSONAL_DASHBOARD_ADD_STARTER_TOPICS = {
-    "name": "personal_dashboard_add_starter_topics",
-    "description": "Add generic starter topics for news, weather, calendar, stocks, sports, and weekend planning.",
-    "parameters": {"type": "object", "properties": {}},
+PERSONAL_DASHBOARD_HIDE_CONTEXT = {
+    "name": "personal_dashboard_hide_context",
+    "description": "Hide an inferred context item and dismiss its generated dashboard card.",
+    "parameters": {
+        "type": "object",
+        "properties": {"id": {"type": "string", "description": "Context item id."}},
+        "required": ["id"],
+    },
 }
 
-PERSONAL_DASHBOARD_CREATE_SAMPLE_CARDS = {
-    "name": "personal_dashboard_create_sample_cards",
-    "description": "Create generic sample cards so a new user can see how the dashboard layout works.",
+PERSONAL_DASHBOARD_GET_SNAPSHOT = {
+    "name": "personal_dashboard_get_snapshot",
+    "description": "Return the autonomous dashboard snapshot. By default this reflects current Hermes memory/session context.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "auto_refresh": {"type": "boolean", "description": "Refresh from Hermes context before returning. Defaults to true."}
+        },
+    },
+}
+
+PERSONAL_DASHBOARD_REFRESH_FROM_HERMES = {
+    "name": "personal_dashboard_refresh_from_hermes",
+    "description": "Scan existing Hermes memory, session history, and cron output, infer relevant context, and update dashboard cards. Requires no user setup.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "include_sessions": {"type": "boolean", "description": "Scan ~/.hermes/state.db when available. Defaults to true."},
+            "include_cron": {"type": "boolean", "description": "Scan cron jobs and recent cron output when available. Defaults to true."},
+            "create_cards": {"type": "boolean", "description": "Create visible cards from inferred context. Defaults to true."},
+        },
+    },
+}
+
+PERSONAL_DASHBOARD_GET_PREFERENCES = {
+    "name": "personal_dashboard_get_preferences",
+    "description": "Return internal dashboard preferences such as autonomous refresh timestamps and cron job ids.",
     "parameters": {"type": "object", "properties": {}},
 }
 
 PERSONAL_DASHBOARD_CREATE_CRON_JOBS = {
     "name": "personal_dashboard_create_cron_jobs",
-    "description": "Create the standard Personal Dashboard Hermes cron jobs using saved setup preferences.",
+    "description": "Create autonomous Personal Dashboard Hermes cron jobs. Jobs infer what to refresh from Hermes memory/session context.",
     "parameters": {
         "type": "object",
         "properties": {
             "force": {"type": "boolean", "description": "Create replacement jobs even if job ids are already stored."},
-        },
-    },
-}
-
-PERSONAL_DASHBOARD_QUICKSTART = {
-    "name": "personal_dashboard_quickstart",
-    "description": "Run a friendly first-time setup: save preferences, add starter topics, optionally create sample cards, and optionally create cron jobs.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "briefing_time": {"type": "string"},
-            "timezone": {"type": "string"},
-            "location": {"type": "string"},
-            "alert_frequency": {"type": "string"},
-            "calendar_enabled": {"type": "boolean"},
-            "weekend_planner": {"type": "boolean"},
-            "topics": {"type": "array", "items": {"type": "object"}},
-            "create_sample_cards": {"type": "boolean", "description": "Defaults to true."},
-            "create_cron_jobs": {"type": "boolean", "description": "Defaults to false so the user can review first."},
         },
     },
 }
@@ -233,14 +209,11 @@ ALL_SCHEMAS = [
     PERSONAL_DASHBOARD_ADD_EVIDENCE,
     PERSONAL_DASHBOARD_LIST_CARDS,
     PERSONAL_DASHBOARD_RECORD_REFRESH,
-    PERSONAL_DASHBOARD_SUGGEST_CARD,
-    PERSONAL_DASHBOARD_UPSERT_TOPIC,
-    PERSONAL_DASHBOARD_GET_TOPICS,
-    PERSONAL_DASHBOARD_GET_PREFERENCES,
+    PERSONAL_DASHBOARD_UPSERT_CONTEXT,
+    PERSONAL_DASHBOARD_LIST_CONTEXT,
+    PERSONAL_DASHBOARD_HIDE_CONTEXT,
     PERSONAL_DASHBOARD_GET_SNAPSHOT,
-    PERSONAL_DASHBOARD_SAVE_SETUP,
-    PERSONAL_DASHBOARD_ADD_STARTER_TOPICS,
-    PERSONAL_DASHBOARD_CREATE_SAMPLE_CARDS,
+    PERSONAL_DASHBOARD_REFRESH_FROM_HERMES,
+    PERSONAL_DASHBOARD_GET_PREFERENCES,
     PERSONAL_DASHBOARD_CREATE_CRON_JOBS,
-    PERSONAL_DASHBOARD_QUICKSTART,
 ]

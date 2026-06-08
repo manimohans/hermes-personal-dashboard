@@ -30,18 +30,19 @@ def _raise(exc: Exception) -> None:
 def _cron_prompt(kind: str) -> str:
     base = (
         "Use the hermes-personal-dashboard:briefing-curator skill. "
-        "Read personal_dashboard_get_preferences and personal_dashboard_get_topics. "
-        "Fetch only the user-configured generic topics with available Hermes tools. "
+        "Start with personal_dashboard_refresh_from_hermes so the dashboard reflects "
+        "existing Hermes memory, sessions, cron output, and prior agent work without "
+        "requiring user setup. Then read personal_dashboard_list_context and use the "
+        "available Hermes tools to refresh useful live cards for the inferred context. "
         "Write structured cards with personal_dashboard_upsert_card and record the run "
-        "with personal_dashboard_record_refresh. Do not infer or expose private topics "
-        "that the user has not configured or accepted."
+        "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
-        return f"{base} Produce the morning daily briefing dashboard refresh."
+        return f"{base} Produce the autonomous morning dashboard refresh."
     if kind == "alerts":
-        return f"{base} Refresh time-sensitive alert cards such as weather, stocks, sports, news, and calendar items."
+        return f"{base} Refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, project, and alert items inferred from Hermes context."
     if kind == "weekend":
-        return f"{base} Produce a weekend planning refresh using configured location, calendar preference, weather, events, and interests."
+        return f"{base} Produce a weekend/planning refresh from whatever Hermes already knows is relevant."
     return base
 
 
@@ -96,8 +97,8 @@ async def health() -> Dict[str, Any]:
 
 
 @router.get("/snapshot")
-async def snapshot() -> Dict[str, Any]:
-    return core.dashboard_snapshot()
+async def snapshot(auto_refresh: bool = True) -> Dict[str, Any]:
+    return core.dashboard_snapshot(auto_refresh=auto_refresh)
 
 
 @router.get("/cards")
@@ -171,38 +172,6 @@ async def post_evidence(card_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         _raise(exc)
 
 
-@router.get("/topics")
-async def get_topics(include_disabled: bool = True) -> Dict[str, Any]:
-    try:
-        return {"topics": core.list_topics(include_disabled=include_disabled)}
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.post("/topics")
-async def post_topic(body: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        return {"topic": core.upsert_topic(body)}
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.patch("/topics/{topic_id}")
-async def patch_topic(topic_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        return {"topic": core.patch_topic(topic_id, body)}
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.delete("/topics/{topic_id}")
-async def delete_topic(topic_id: str) -> Dict[str, Any]:
-    try:
-        return core.delete_topic(topic_id)
-    except Exception as exc:
-        _raise(exc)
-
-
 @router.get("/preferences")
 async def get_preferences() -> Dict[str, Any]:
     return {"preferences": core.get_preferences()}
@@ -232,76 +201,44 @@ async def post_refresh_run(body: Dict[str, Any]) -> Dict[str, Any]:
         _raise(exc)
 
 
-@router.get("/suggestions")
-async def get_suggestions(status: Optional[str] = "pending") -> Dict[str, Any]:
+@router.get("/context")
+async def get_context(include_hidden: bool = False, limit: int = 100) -> Dict[str, Any]:
     try:
-        return {"suggestions": core.list_suggestions(status)}
+        return {"context_items": core.list_context_items(include_hidden=include_hidden, limit=limit)}
     except Exception as exc:
         _raise(exc)
 
 
-@router.post("/suggestions")
-async def post_suggestion(body: Dict[str, Any]) -> Dict[str, Any]:
+@router.post("/context")
+async def post_context(body: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        return {"suggestion": core.suggest(body)}
+        return {"context_item": core.upsert_context_item(body)}
     except Exception as exc:
         _raise(exc)
 
 
-@router.post("/suggestions/discover")
-async def discover_suggestions() -> Dict[str, Any]:
+@router.post("/context/refresh")
+async def refresh_context(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
-        return core.discover_suggestions_from_memory()
+        body = body or {}
+        return core.refresh_from_hermes_context(
+            include_sessions=bool(body.get("include_sessions", True)),
+            include_cron=bool(body.get("include_cron", True)),
+            create_cards=bool(body.get("create_cards", True)),
+        )
     except Exception as exc:
         _raise(exc)
 
 
-@router.post("/suggestions/{suggestion_id}/accept")
-async def accept_suggestion(suggestion_id: str) -> Dict[str, Any]:
+@router.post("/context/{context_id}/hide")
+async def hide_context(context_id: str) -> Dict[str, Any]:
     try:
-        return core.accept_suggestion(suggestion_id)
+        return {"context_item": core.hide_context_item(context_id)}
     except Exception as exc:
         _raise(exc)
 
 
-@router.post("/suggestions/{suggestion_id}/dismiss")
-async def dismiss_suggestion(suggestion_id: str) -> Dict[str, Any]:
-    try:
-        return {"suggestion": core.dismiss_suggestion(suggestion_id)}
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.get("/setup/status")
-async def get_setup_status() -> Dict[str, Any]:
-    return core.setup_status()
-
-
-@router.post("/setup/save")
-async def save_setup(body: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        return core.save_setup(body)
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.post("/setup/starter-topics")
-async def add_starter_topics() -> Dict[str, Any]:
-    try:
-        return core.add_starter_topics()
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.post("/setup/sample-cards")
-async def create_sample_cards() -> Dict[str, Any]:
-    try:
-        return core.create_sample_cards()
-    except Exception as exc:
-        _raise(exc)
-
-
-@router.post("/setup/create-cron-jobs")
+@router.post("/automation/create-cron-jobs")
 async def create_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         body = body or {}
@@ -311,12 +248,17 @@ async def create_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, A
         if existing and not force:
             return {"created": [], "existing": existing, "skipped": True}
 
+        try:
+            import cron  # noqa: F401
+        except Exception as exc:
+            core.put_preferences({"cron_unavailable": str(exc)})
+            return {"created": [], "existing": existing, "skipped": True, "error": f"cron integration unavailable: {exc}"}
+
         schedules = {
-            "morning": _parse_hhmm(prefs.get("briefing_time") or body.get("briefing_time")),
-            "alerts": _alert_schedule(prefs.get("alert_frequency") or body.get("alert_frequency")),
+            "morning": _parse_hhmm(prefs.get("briefing_time") or body.get("briefing_time") or "07:30"),
+            "alerts": _alert_schedule(prefs.get("alert_frequency") or body.get("alert_frequency") or "hourly"),
+            "weekend": "0 15 * * 5",
         }
-        if prefs.get("weekend_planner", True):
-            schedules["weekend"] = "0 15 * * 5"
 
         created = []
         cron_jobs: Dict[str, str] = {}
@@ -331,3 +273,8 @@ async def create_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, A
         return {"created": created, "existing": {}, "skipped": False}
     except Exception as exc:
         _raise(exc)
+
+
+@router.post("/automation/ensure-jobs")
+async def ensure_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return await create_cron_jobs(body or {})

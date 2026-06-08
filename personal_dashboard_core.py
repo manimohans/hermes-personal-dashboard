@@ -11,10 +11,9 @@ import json
 import os
 import re
 import sqlite3
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 PLUGIN_ID = "hermes-personal-dashboard"
@@ -22,61 +21,128 @@ PLUGIN_LABEL = "Hermes Personal Dashboard"
 
 PRIORITIES = {"low", "medium", "high", "critical"}
 CARD_STATUSES = {"active", "stale", "dismissed", "expired", "pinned"}
-SUGGESTION_STATUSES = {"pending", "accepted", "dismissed"}
 REFRESH_STATUSES = {"running", "success", "error"}
+CONTEXT_STATUSES = {"active", "hidden"}
 
 _ID_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
 
-STARTER_TOPICS: List[Dict[str, Any]] = [
-    {
-        "domain": "news",
-        "label": "Daily news briefing",
-        "query": "Top important news from my configured sources and interests.",
-        "cadence": "daily",
-        "priority": "medium",
-        "config": {"starter": True},
-    },
-    {
-        "domain": "weather",
-        "label": "Local weather",
-        "query": "Forecast, severe weather, commute-impacting weather, and weekend weather for my configured location.",
-        "cadence": "daily",
-        "priority": "medium",
-        "config": {"starter": True},
-    },
-    {
-        "domain": "calendar",
-        "label": "Today and tomorrow",
-        "query": "Upcoming calendar events, reminders, and schedule conflicts when calendar access is enabled.",
-        "cadence": "daily",
-        "priority": "medium",
-        "config": {"starter": True},
-    },
-    {
-        "domain": "stocks",
-        "label": "Market watchlist",
-        "query": "Configured tickers, unusual moves, threshold alerts, and market context.",
-        "cadence": "alerts",
-        "priority": "medium",
-        "config": {"starter": True},
-    },
-    {
-        "domain": "sports",
-        "label": "Favorite teams",
-        "query": "Configured teams, next games, recent results, injuries, and high-signal news.",
-        "cadence": "daily",
-        "priority": "medium",
-        "config": {"starter": True},
-    },
-    {
-        "domain": "planning",
-        "label": "Weekend planner",
-        "query": "Weather-aware weekend options, calendar constraints, local events, and saved interests.",
-        "cadence": "weekly",
-        "priority": "medium",
-        "config": {"starter": True},
-    },
-]
+DOMAIN_PATTERNS: Dict[str, Tuple[str, ...]] = {
+    "alerts": (
+        "alert",
+        "urgent",
+        "threshold",
+        "notify",
+        "watch",
+        "monitor",
+        "warning",
+        "deadline",
+    ),
+    "calendar": (
+        "calendar",
+        "meeting",
+        "appointment",
+        "schedule",
+        "event",
+        "reminder",
+        "today",
+        "tomorrow",
+    ),
+    "family": (
+        "daycare",
+        "school",
+        "lunch menu",
+        "menu",
+        "daughter",
+        "son",
+        "kid",
+        "child",
+        "family",
+    ),
+    "news": (
+        "news",
+        "politics",
+        "ai update",
+        "morning update",
+        "briefing",
+        "headlines",
+        "current events",
+    ),
+    "planning": (
+        "weekend",
+        "plan",
+        "plans",
+        "itinerary",
+        "trip",
+        "local events",
+        "things to do",
+    ),
+    "projects": (
+        "github",
+        "issue",
+        "pull request",
+        "repo",
+        "repository",
+        "project",
+        "worktree",
+        "deploy",
+        "build",
+    ),
+    "sports": (
+        "sports",
+        "soccer",
+        "football",
+        "match",
+        "fixture",
+        "game",
+        "league",
+        "team",
+        "club",
+    ),
+    "stocks": (
+        "stock",
+        "stocks",
+        "ticker",
+        "portfolio",
+        "market",
+        "equity",
+        "earnings",
+        "price alert",
+    ),
+    "weather": (
+        "weather",
+        "forecast",
+        "rain",
+        "snow",
+        "temperature",
+        "storm",
+        "air quality",
+        "commute",
+    ),
+}
+
+DOMAIN_SECTIONS = {
+    "alerts": "now",
+    "calendar": "now",
+    "family": "today",
+    "news": "today",
+    "planning": "week",
+    "projects": "watching",
+    "sports": "week",
+    "stocks": "watching",
+    "weather": "now",
+}
+
+SOURCE_WEIGHTS = {
+    "memory": 1.0,
+    "user_profile": 1.0,
+    "session": 0.65,
+    "cron": 0.8,
+    "cron_job": 0.7,
+}
+
+SESSION_TABLE_HINTS = ("session", "message", "conversation", "chat", "turn", "cron", "output")
+TEXT_COLUMN_HINTS = ("content", "message", "text", "body", "prompt", "response", "title", "summary", "name", "output")
+TIME_COLUMN_HINTS = ("updated", "created", "started", "ended", "timestamp", "time", "last")
 
 
 class DashboardError(ValueError):
@@ -165,22 +231,6 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_cards_updated_at ON cards(updated_at);
         CREATE INDEX IF NOT EXISTS idx_cards_valid_until ON cards(valid_until);
 
-        CREATE TABLE IF NOT EXISTS topics (
-            id TEXT PRIMARY KEY,
-            domain TEXT NOT NULL,
-            label TEXT NOT NULL,
-            query TEXT,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            priority TEXT NOT NULL DEFAULT 'medium',
-            cadence TEXT,
-            config_json TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_topics_domain ON topics(domain);
-        CREATE INDEX IF NOT EXISTS idx_topics_enabled ON topics(enabled);
-
         CREATE TABLE IF NOT EXISTS evidence (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             card_id TEXT NOT NULL,
@@ -215,18 +265,25 @@ def init_db(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS suggestions (
+        CREATE TABLE IF NOT EXISTS context_items (
             id TEXT PRIMARY KEY,
-            kind TEXT NOT NULL,
-            title TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            label TEXT NOT NULL,
             summary TEXT,
-            payload_json TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
+            evidence_json TEXT,
+            source_types_json TEXT,
+            confidence REAL,
+            score REAL,
+            status TEXT NOT NULL DEFAULT 'active',
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            payload_json TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
+        CREATE INDEX IF NOT EXISTS idx_context_items_domain ON context_items(domain);
+        CREATE INDEX IF NOT EXISTS idx_context_items_status ON context_items(status);
+        CREATE INDEX IF NOT EXISTS idx_context_items_score ON context_items(score);
         """
     )
     conn.commit()
@@ -249,7 +306,7 @@ def _json_loads(value: Any, fallback: Any = None) -> Any:
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     item = dict(row)
-    for key in ("payload_json", "config_json", "value_json"):
+    for key in ("payload_json", "config_json", "value_json", "evidence_json", "source_types_json"):
         if key in item:
             decoded = _json_loads(item.pop(key), None)
             target = key.replace("_json", "")
@@ -279,6 +336,9 @@ def normalize_status(value: Any, allowed: Iterable[str], default: str) -> str:
 def validate_card_payload(data: Dict[str, Any], partial: bool = False) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DashboardError("payload must be an object")
+    if "context_id" in data and "topic_id" not in data:
+        data = dict(data)
+        data["topic_id"] = data.get("context_id")
 
     required = [] if partial else ["id", "domain", "title", "summary"]
     for key in required:
@@ -540,145 +600,6 @@ def dismiss_card(card_id: str, conn: Optional[sqlite3.Connection] = None) -> Dic
     return patch_card(card_id, {"status": "dismissed"}, conn)
 
 
-def validate_topic_payload(data: Dict[str, Any], partial: bool = False) -> Dict[str, Any]:
-    if not isinstance(data, dict):
-        raise DashboardError("payload must be an object")
-    required = [] if partial else ["domain", "label"]
-    for key in required:
-        if not str(data.get(key) or "").strip():
-            raise DashboardError(f"{key} is required")
-    out: Dict[str, Any] = {}
-    for key in ("id", "domain", "label", "query", "cadence"):
-        if key in data and data.get(key) is not None:
-            out[key] = str(data[key]).strip()
-    if "domain" in out:
-        out["domain"] = slugify(out["domain"], "general")
-    if "id" in out:
-        out["id"] = slugify(out["id"], "topic")
-    elif not partial:
-        out["id"] = slugify(f"{out.get('domain', 'general')}:{out.get('label', 'topic')}", "topic")
-    if "priority" in data:
-        out["priority"] = normalize_priority(data.get("priority"))
-    elif not partial:
-        out["priority"] = "medium"
-    if "enabled" in data:
-        out["enabled"] = 1 if bool(data.get("enabled")) else 0
-    elif not partial:
-        out["enabled"] = 1
-    if "config" in data:
-        out["config_json"] = _json_dumps(data.get("config"))
-    return out
-
-
-def upsert_topic(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        payload = validate_topic_payload(data)
-        now = utc_now()
-        existing = cx.execute("SELECT created_at FROM topics WHERE id = ?", (payload["id"],)).fetchone()
-        created_at = existing["created_at"] if existing else now
-        fields = ["id", "domain", "label", "query", "enabled", "priority", "cadence", "config_json", "created_at", "updated_at"]
-        values = [
-            payload.get("id"),
-            payload.get("domain"),
-            payload.get("label"),
-            payload.get("query"),
-            payload.get("enabled"),
-            payload.get("priority"),
-            payload.get("cadence"),
-            payload.get("config_json"),
-            created_at,
-            now,
-        ]
-        updates = ", ".join(f"{f}=excluded.{f}" for f in fields if f not in {"id", "created_at"})
-        cx.execute(
-            f"""
-            INSERT INTO topics ({", ".join(fields)})
-            VALUES ({", ".join("?" for _ in fields)})
-            ON CONFLICT(id) DO UPDATE SET {updates}
-            """,
-            values,
-        )
-        cx.commit()
-        return get_topic(payload["id"], cx) or {}
-    finally:
-        if own:
-            cx.close()
-
-
-def get_topic(topic_id: str, conn: Optional[sqlite3.Connection] = None) -> Optional[Dict[str, Any]]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        row = cx.execute("SELECT * FROM topics WHERE id = ?", (slugify(topic_id, "topic"),)).fetchone()
-        return _row_to_dict(row) if row else None
-    finally:
-        if own:
-            cx.close()
-
-
-def list_topics(include_disabled: bool = True, conn: Optional[sqlite3.Connection] = None) -> List[Dict[str, Any]]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        where = "" if include_disabled else "WHERE enabled = 1"
-        rows = cx.execute(
-            f"SELECT * FROM topics {where} ORDER BY domain ASC, label ASC"
-        ).fetchall()
-        return [_row_to_dict(r) for r in rows]
-    finally:
-        if own:
-            cx.close()
-
-
-def patch_topic(topic_id: str, data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        topic_id = slugify(topic_id, "topic")
-        if not get_topic(topic_id, cx):
-            raise DashboardError("topic not found")
-        payload = validate_topic_payload(data, partial=True)
-        payload["updated_at"] = utc_now()
-        allowed = {"domain", "label", "query", "enabled", "priority", "cadence", "config_json", "updated_at"}
-        fields = [k for k in payload if k in allowed]
-        if fields:
-            cx.execute(
-                f"UPDATE topics SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
-                [payload[k] for k in fields] + [topic_id],
-            )
-            cx.commit()
-        return get_topic(topic_id, cx) or {}
-    finally:
-        if own:
-            cx.close()
-
-
-def delete_topic(topic_id: str, conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        topic_id = slugify(topic_id, "topic")
-        cur = cx.execute("DELETE FROM topics WHERE id = ?", (topic_id,))
-        cx.commit()
-        return {"deleted": int(cur.rowcount or 0), "id": topic_id}
-    finally:
-        if own:
-            cx.close()
-
-
-def add_starter_topics(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        topics = [upsert_topic(item, cx) for item in STARTER_TOPICS]
-        return {"topics": topics, "count": len(topics)}
-    finally:
-        if own:
-            cx.close()
-
-
 def add_evidence(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DashboardError("payload must be an object")
@@ -722,64 +643,6 @@ def list_evidence(card_id: str, conn: Optional[sqlite3.Connection] = None) -> Li
             (slugify(card_id, "card"),),
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
-    finally:
-        if own:
-            cx.close()
-
-
-def create_sample_cards(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        now = utc_now()
-        samples = [
-            {
-                "id": "sample-now-weather",
-                "domain": "weather",
-                "title": "Sample weather alert",
-                "summary": "Example card: Hermes will replace this with your configured location's current forecast.",
-                "priority": "high",
-                "updated_at": now,
-                "source_label": "Sample data",
-                "why_shown": "Shows how urgent cards appear in Now.",
-                "payload": {"section": "now", "sample": True},
-            },
-            {
-                "id": "sample-today-briefing",
-                "domain": "news",
-                "title": "Sample daily briefing",
-                "summary": "Example card: the morning job will summarize configured topics and sources here.",
-                "priority": "medium",
-                "updated_at": now,
-                "source_label": "Sample data",
-                "why_shown": "Shows how daily briefing cards appear in Today.",
-                "payload": {"section": "today", "sample": True},
-            },
-            {
-                "id": "sample-weekend-plans",
-                "domain": "planning",
-                "title": "Sample weekend planner",
-                "summary": "Example card: Hermes can combine calendar, weather, sports, and local events into a weekly plan.",
-                "priority": "medium",
-                "updated_at": now,
-                "source_label": "Sample data",
-                "why_shown": "Shows how longer-range planning cards appear in This Week.",
-                "payload": {"section": "week", "sample": True},
-            },
-            {
-                "id": "sample-watchlist",
-                "domain": "stocks",
-                "title": "Sample watchlist",
-                "summary": "Example card: configured tickers, teams, projects, or topics can sit here until something changes.",
-                "priority": "low",
-                "updated_at": now,
-                "source_label": "Sample data",
-                "why_shown": "Shows how ongoing monitors appear in Watching.",
-                "payload": {"section": "watching", "sample": True},
-            },
-        ]
-        cards = [upsert_card(item, cx) for item in samples]
-        return {"cards": cards, "count": len(cards)}
     finally:
         if own:
             cx.close()
@@ -871,16 +734,17 @@ def put_preferences(values: Dict[str, Any], conn: Optional[sqlite3.Connection] =
             cx.close()
 
 
-def setup_status(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+def dashboard_status(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     own = conn is None
     cx = conn or connect()
     try:
         prefs = get_preferences(cx)
-        topics = list_topics(True, cx)
+        context_count = cx.execute("SELECT COUNT(*) AS count FROM context_items WHERE status != 'hidden'").fetchone()["count"]
         card_count = cx.execute("SELECT COUNT(*) AS count FROM cards").fetchone()["count"]
         return {
-            "configured": bool(prefs.get("setup_completed")),
-            "topic_count": len(topics),
+            "mode": "autonomous",
+            "requires_configuration": False,
+            "context_count": int(context_count),
             "card_count": int(card_count),
             "preferences": prefs,
             "db_path": str(db_path()),
@@ -890,212 +754,587 @@ def setup_status(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
             cx.close()
 
 
-def save_setup(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    if not isinstance(data, dict):
-        raise DashboardError("setup payload must be an object")
-    own = conn is None
-    cx = conn or connect()
+def _quote_identifier(name: str) -> str:
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
+        return name
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _clean_text(value: Any, limit: int = 500) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip(" -\t\r\n")
+    return text[:limit]
+
+
+def _clip_words(value: str, limit: int = 160) -> str:
+    text = _clean_text(value, limit + 40)
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _memory_file_paths() -> List[Path]:
+    home = hermes_home()
+    candidates: List[Path] = []
+    for name in ("MEMORY.md", "USER.md"):
+        candidates.append(home / "memories" / name)
+        candidates.append(home / name)
+    memory_dir = home / "memories"
+    if memory_dir.exists():
+        for path in sorted(memory_dir.glob("*.md"))[:30]:
+            if path not in candidates:
+                candidates.append(path)
+    return candidates
+
+
+def _source_type_for_path(path: Path) -> str:
+    name = path.name.lower()
+    if name == "user.md":
+        return "user_profile"
+    if "cron" in str(path).lower():
+        return "cron"
+    return "memory"
+
+
+def _read_file_sources(max_chars_per_file: int = 16000) -> List[Dict[str, Any]]:
+    sources: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in _memory_file_paths():
+        key = str(path)
+        if key in seen or not path.exists() or not path.is_file():
+            continue
+        seen.add(key)
+        text = path.read_text(encoding="utf-8", errors="ignore")[:max_chars_per_file]
+        if _clean_text(text, 80):
+            sources.append(
+                {
+                    "source_type": _source_type_for_path(path),
+                    "source_label": path.name,
+                    "path": str(path),
+                    "text": text,
+                    "updated_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+            )
+    return sources
+
+
+def _read_cron_sources(max_files: int = 40, max_chars_per_file: int = 12000) -> List[Dict[str, Any]]:
+    sources: List[Dict[str, Any]] = []
+    home = hermes_home()
+    jobs_path = home / "cron" / "jobs.json"
+    if jobs_path.exists() and jobs_path.is_file():
+        text = jobs_path.read_text(encoding="utf-8", errors="ignore")[:max_chars_per_file]
+        if _clean_text(text, 80):
+            sources.append(
+                {
+                    "source_type": "cron_job",
+                    "source_label": "cron/jobs.json",
+                    "path": str(jobs_path),
+                    "text": text,
+                    "updated_at": datetime.fromtimestamp(jobs_path.stat().st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+            )
+
+    output_dir = home / "cron" / "output"
+    if not output_dir.exists():
+        return sources
+    paths = [
+        path
+        for path in output_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".md", ".txt", ".json", ".log"}
+    ]
+    paths.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+    for path in paths[:max_files]:
+        text = path.read_text(encoding="utf-8", errors="ignore")[:max_chars_per_file]
+        if not _clean_text(text, 80):
+            continue
+        try:
+            label = str(path.relative_to(home))
+        except ValueError:
+            label = path.name
+        sources.append(
+            {
+                "source_type": "cron",
+                "source_label": label,
+                "path": str(path),
+                "text": text,
+                "updated_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+        )
+    return sources
+
+
+def _candidate_session_tables(conn: sqlite3.Connection) -> List[Tuple[str, List[str], Optional[str]]]:
+    tables = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name").fetchall()
+    candidates: List[Tuple[str, List[str], Optional[str]]] = []
+    for table_row in tables:
+        table = str(table_row["name"])
+        lowered_table = table.lower()
+        if lowered_table.startswith("sqlite_") or any(
+            lowered_table.endswith(suffix) for suffix in ("_data", "_idx", "_docsize", "_config")
+        ):
+            continue
+        if not any(hint in lowered_table for hint in SESSION_TABLE_HINTS):
+            continue
+        try:
+            columns = conn.execute(f"PRAGMA table_info({_quote_identifier(table)})").fetchall()
+        except sqlite3.Error:
+            continue
+        text_columns = [
+            str(column["name"])
+            for column in columns
+            if any(hint in str(column["name"]).lower() for hint in TEXT_COLUMN_HINTS)
+        ][:4]
+        if not text_columns:
+            continue
+        time_columns = [
+            str(column["name"])
+            for column in columns
+            if any(hint in str(column["name"]).lower() for hint in TIME_COLUMN_HINTS)
+        ]
+        candidates.append((table, text_columns, time_columns[0] if time_columns else None))
+    return candidates
+
+
+def _read_session_sources(max_rows: int = 220) -> List[Dict[str, Any]]:
+    path = hermes_home() / "state.db"
+    if not path.exists() or not path.is_file():
+        return []
+    sources: List[Dict[str, Any]] = []
     try:
-        existing = get_preferences(cx)
-        prefs = {
-            "setup_completed": True,
-            "briefing_time": data.get("briefing_time") or "07:30",
-            "timezone": data.get("timezone") or "",
-            "location": data.get("location") or "",
-            "alert_frequency": data.get("alert_frequency") or "hourly",
-            "weekend_planner": bool(data.get("weekend_planner", True)),
-            "calendar_enabled": bool(data.get("calendar_enabled", False)),
-            "source_preferences": data["source_preferences"] if "source_preferences" in data else existing.get("source_preferences", {}),
-            "cron_jobs": data["cron_jobs"] if "cron_jobs" in data else existing.get("cron_jobs", {}),
-        }
-        put_preferences(prefs, cx)
-
-        for item in data.get("topics") or []:
-            if isinstance(item, dict):
-                upsert_topic(item, cx)
-
-        return setup_status(cx)
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+    except sqlite3.Error:
+        return []
+    try:
+        per_table = max(10, max_rows // 6)
+        for table, text_columns, time_column in _candidate_session_tables(conn):
+            table_sql = _quote_identifier(table)
+            select_parts = [f"CAST({_quote_identifier(column)} AS TEXT)" for column in text_columns]
+            text_expr = " || ' ' || ".join(f"COALESCE({part}, '')" for part in select_parts)
+            where_expr = " OR ".join(f"LENGTH(COALESCE(CAST({_quote_identifier(column)} AS TEXT), '')) > 20" for column in text_columns)
+            order_sql = f" ORDER BY {_quote_identifier(time_column)} DESC" if time_column else ""
+            query = f"SELECT {text_expr} AS text FROM {table_sql} WHERE {where_expr}{order_sql} LIMIT ?"
+            try:
+                rows = conn.execute(query, (per_table,)).fetchall()
+            except sqlite3.Error:
+                continue
+            for row in rows:
+                text = _clean_text(row["text"], 3000)
+                if len(text) < 24:
+                    continue
+                sources.append(
+                    {
+                        "source_type": "session",
+                        "source_label": f"state.db:{table}",
+                        "path": str(path),
+                        "text": text,
+                    }
+                )
+                if len(sources) >= max_rows:
+                    return sources
     finally:
-        if own:
-            cx.close()
+        conn.close()
+    return sources
 
 
-def suggest(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+def collect_hermes_sources(include_sessions: bool = True, include_cron: bool = True) -> List[Dict[str, Any]]:
+    sources = _read_file_sources()
+    if include_cron:
+        sources.extend(_read_cron_sources())
+    if include_sessions:
+        sources.extend(_read_session_sources())
+    return sources
+
+
+def _candidate_snippets(source: Dict[str, Any], per_source_limit: int = 80) -> List[str]:
+    text = str(source.get("text") or "")
+    lines = []
+    for raw in text.splitlines():
+        line = _clean_text(raw, 700)
+        if len(line) >= 18:
+            lines.append(line)
+        if len(lines) >= per_source_limit:
+            break
+    if lines:
+        return lines
+    parts = re.split(r"(?<=[.!?])\s+", _clean_text(text, 5000))
+    return [part for part in parts[:per_source_limit] if len(part) >= 18]
+
+
+def _domains_for_text(text: str) -> List[str]:
+    lowered = text.lower()
+    domains = [
+        domain
+        for domain, patterns in DOMAIN_PATTERNS.items()
+        if any(pattern in lowered for pattern in patterns)
+    ]
+    if domains:
+        return domains
+    if any(word in lowered for word in ("user", "prefers", "wants", "likes", "asks", "daily", "recurring")):
+        return ["personal"]
+    return []
+
+
+def _label_for_context(domain: str, text: str) -> str:
+    cleaned = _clean_text(text, 140)
+    cleaned = re.sub(r"^(the )?user (wants|likes|prefers|follows|tracks|uses|asks for|asked for)\s+", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"^(remember|note|preference):\s*", "", cleaned, flags=re.I)
+    if not cleaned:
+        cleaned = domain.replace("_", " ").title()
+    return _clip_words(cleaned, 90)
+
+
+def _context_summary(domain: str, label: str, evidence: Sequence[Dict[str, Any]]) -> str:
+    if evidence:
+        snippet = _clip_words(str(evidence[0].get("text") or ""), 150)
+        return f"Hermes has this in its {evidence[0].get('source_type', 'context')} history: {snippet}"
+    return f"Hermes inferred this {domain} item from its existing context: {label}"
+
+
+def infer_context_items(sources: Sequence[Dict[str, Any]], max_items: int = 40) -> List[Dict[str, Any]]:
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for source in sources:
+        source_type = str(source.get("source_type") or "memory")
+        weight = SOURCE_WEIGHTS.get(source_type, 0.5)
+        for snippet in _candidate_snippets(source):
+            domains = _domains_for_text(snippet)
+            for domain in domains:
+                label = _label_for_context(domain, snippet)
+                key = f"{domain}:{slugify(label, 'context')}"
+                item = grouped.setdefault(
+                    key,
+                    {
+                        "id": f"context-{slugify(key, 'item')}",
+                        "domain": domain,
+                        "label": label,
+                        "evidence": [],
+                        "source_types": set(),
+                        "score": 0.0,
+                    },
+                )
+                item["score"] += weight
+                item["source_types"].add(source_type)
+                if len(item["evidence"]) < 5:
+                    item["evidence"].append(
+                        {
+                            "source_type": source_type,
+                            "source_label": source.get("source_label"),
+                            "path": source.get("path"),
+                            "text": _clip_words(snippet, 220),
+                        }
+                    )
+    inferred: List[Dict[str, Any]] = []
+    for item in grouped.values():
+        evidence = item["evidence"]
+        score = float(item["score"])
+        source_types = sorted(item["source_types"])
+        confidence = min(0.95, 0.35 + min(score, 4.0) * 0.15 + min(len(source_types), 3) * 0.05)
+        inferred.append(
+            {
+                "id": item["id"],
+                "domain": item["domain"],
+                "label": item["label"],
+                "summary": _context_summary(item["domain"], item["label"], evidence),
+                "evidence": evidence,
+                "source_types": source_types,
+                "confidence": round(confidence, 3),
+                "score": round(score, 3),
+                "payload": {"auto_discovered": True},
+            }
+        )
+    inferred.sort(key=lambda item: (float(item.get("score") or 0), float(item.get("confidence") or 0)), reverse=True)
+    return inferred[:max_items]
+
+
+def upsert_context_item(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     if not isinstance(data, dict):
-        raise DashboardError("payload must be an object")
-    kind = slugify(str(data.get("kind") or "card"), "card")
-    title = str(data.get("title") or "").strip()
-    if not title:
-        raise DashboardError("title is required")
-    payload = data.get("payload") or {}
-    sugg_id = slugify(str(data.get("id") or f"{kind}:{title}:{time.time_ns()}"), "suggestion")
+        raise DashboardError("context payload must be an object")
+    domain = slugify(str(data.get("domain") or "personal"), "personal")
+    label = _clean_text(data.get("label"), 160)
+    if not label:
+        raise DashboardError("label is required")
+    context_id = slugify(str(data.get("id") or f"context:{domain}:{label}"), "context")
+    status = normalize_status(data.get("status"), CONTEXT_STATUSES, "active")
     own = conn is None
     cx = conn or connect()
     try:
         now = utc_now()
+        existing = cx.execute("SELECT created_at, status FROM context_items WHERE id = ?", (context_id,)).fetchone()
+        created_at = existing["created_at"] if existing else now
+        if existing and existing["status"] == "hidden" and "status" not in data:
+            status = "hidden"
+        fields = [
+            "id",
+            "domain",
+            "label",
+            "summary",
+            "evidence_json",
+            "source_types_json",
+            "confidence",
+            "score",
+            "status",
+            "created_at",
+            "updated_at",
+            "last_seen_at",
+            "payload_json",
+        ]
+        values = [
+            context_id,
+            domain,
+            label,
+            data.get("summary"),
+            _json_dumps(data.get("evidence") or []),
+            _json_dumps(data.get("source_types") or []),
+            data.get("confidence"),
+            data.get("score"),
+            status,
+            created_at,
+            now,
+            now,
+            _json_dumps(data.get("payload") or {}),
+        ]
+        updates = ", ".join(f"{field}=excluded.{field}" for field in fields if field not in {"id", "created_at"})
         cx.execute(
-            """
-            INSERT INTO suggestions (id, kind, title, summary, payload_json, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                kind = excluded.kind,
-                title = excluded.title,
-                summary = excluded.summary,
-                payload_json = excluded.payload_json,
-                status = 'pending',
-                updated_at = excluded.updated_at
+            f"""
+            INSERT INTO context_items ({", ".join(fields)})
+            VALUES ({", ".join("?" for _ in fields)})
+            ON CONFLICT(id) DO UPDATE SET {updates}
             """,
-            (sugg_id, kind, title, data.get("summary"), _json_dumps(payload), now, now),
+            values,
         )
         cx.commit()
-        return get_suggestion(sugg_id, cx) or {}
+        return get_context_item(context_id, cx) or {}
     finally:
         if own:
             cx.close()
 
 
-def get_suggestion(suggestion_id: str, conn: Optional[sqlite3.Connection] = None) -> Optional[Dict[str, Any]]:
+def get_context_item(context_id: str, conn: Optional[sqlite3.Connection] = None) -> Optional[Dict[str, Any]]:
     own = conn is None
     cx = conn or connect()
     try:
-        row = cx.execute("SELECT * FROM suggestions WHERE id = ?", (slugify(suggestion_id, "suggestion"),)).fetchone()
+        row = cx.execute("SELECT * FROM context_items WHERE id = ?", (slugify(context_id, "context"),)).fetchone()
         return _row_to_dict(row) if row else None
     finally:
         if own:
             cx.close()
 
 
-def list_suggestions(status: Optional[str] = "pending", conn: Optional[sqlite3.Connection] = None) -> List[Dict[str, Any]]:
+def list_context_items(
+    include_hidden: bool = False,
+    limit: int = 100,
+    conn: Optional[sqlite3.Connection] = None,
+) -> List[Dict[str, Any]]:
     own = conn is None
     cx = conn or connect()
     try:
-        if status:
-            normalized = normalize_status(status, SUGGESTION_STATUSES, "pending")
-            rows = cx.execute(
-                "SELECT * FROM suggestions WHERE status = ? ORDER BY updated_at DESC",
-                (normalized,),
-            ).fetchall()
-        else:
-            rows = cx.execute("SELECT * FROM suggestions ORDER BY updated_at DESC").fetchall()
-        return [_row_to_dict(r) for r in rows]
+        where = "" if include_hidden else "WHERE status != 'hidden'"
+        rows = cx.execute(
+            f"""
+            SELECT * FROM context_items
+            {where}
+            ORDER BY score DESC, confidence DESC, updated_at DESC
+            LIMIT ?
+            """,
+            (max(1, min(int(limit), 500)),),
+        ).fetchall()
+        return [_row_to_dict(row) for row in rows]
     finally:
         if own:
             cx.close()
 
 
-def accept_suggestion(suggestion_id: str, conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+def hide_context_item(context_id: str, conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     own = conn is None
     cx = conn or connect()
     try:
-        suggestion = get_suggestion(suggestion_id, cx)
-        if not suggestion:
-            raise DashboardError("suggestion not found")
-        payload = suggestion.get("payload") or {}
-        result: Dict[str, Any] = {"suggestion": suggestion}
-        if isinstance(payload, dict):
-            if isinstance(payload.get("card"), dict):
-                result["card"] = upsert_card(payload["card"], cx)
-            if isinstance(payload.get("topic"), dict):
-                result["topic"] = upsert_topic(payload["topic"], cx)
-        cx.execute(
-            "UPDATE suggestions SET status = 'accepted', updated_at = ? WHERE id = ?",
-            (utc_now(), slugify(suggestion_id, "suggestion")),
-        )
-        cx.commit()
-        result["suggestion"] = get_suggestion(suggestion_id, cx)
-        return result
-    finally:
-        if own:
-            cx.close()
-
-
-def dismiss_suggestion(suggestion_id: str, conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    own = conn is None
-    cx = conn or connect()
-    try:
-        suggestion_id = slugify(suggestion_id, "suggestion")
+        context_id = slugify(context_id, "context")
         cur = cx.execute(
-            "UPDATE suggestions SET status = 'dismissed', updated_at = ? WHERE id = ?",
-            (utc_now(), suggestion_id),
+            "UPDATE context_items SET status = 'hidden', updated_at = ? WHERE id = ?",
+            (utc_now(), context_id),
+        )
+        if not cur.rowcount:
+            raise DashboardError("context item not found")
+        cx.execute(
+            "UPDATE cards SET status = 'dismissed', updated_at = ? WHERE id = ?",
+            (utc_now(), f"auto-{context_id}"),
         )
         cx.commit()
-        if not cur.rowcount:
-            raise DashboardError("suggestion not found")
-        return get_suggestion(suggestion_id, cx) or {}
+        return get_context_item(context_id, cx) or {}
     finally:
         if own:
             cx.close()
 
 
-def discover_suggestions_from_memory(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
-    """Create pending suggestions from generic Hermes memory/session hints.
+def _priority_for_context(item: Dict[str, Any]) -> str:
+    text = f"{item.get('label', '')} {item.get('summary', '')}".lower()
+    if any(word in text for word in ("urgent", "critical", "severe", "deadline", "warning")):
+        return "high"
+    if item.get("domain") in {"alerts", "weather", "calendar"}:
+        return "medium"
+    if float(item.get("score") or 0) >= 2.5:
+        return "medium"
+    return "low"
 
-    This intentionally never creates visible cards. It only proposes topics
-    that a user may accept from the setup UI.
-    """
+
+def _card_title_for_context(item: Dict[str, Any]) -> str:
+    label = str(item.get("label") or "").strip()
+    if label:
+        return _clip_words(label, 80)
+    return str(item.get("domain") or "Personal").replace("_", " ").title()
+
+
+def _source_label_for_context(item: Dict[str, Any]) -> str:
+    source_types = item.get("source_types") or []
+    labels = {
+        "memory": "Hermes memory",
+        "user_profile": "Hermes user profile",
+        "session": "Hermes sessions",
+        "cron": "Hermes cron output",
+        "cron_job": "Hermes cron jobs",
+    }
+    readable = [labels.get(str(source_type), str(source_type)) for source_type in source_types]
+    return ", ".join(readable[:3]) or "Hermes context"
+
+
+def _detail_for_context(item: Dict[str, Any]) -> str:
+    evidence = item.get("evidence") or []
+    lines = []
+    for entry in evidence[:4]:
+        source = entry.get("source_label") or entry.get("source_type") or "Hermes"
+        text = _clip_words(str(entry.get("text") or ""), 220)
+        if text:
+            lines.append(f"- {source}: {text}")
+    return "\n".join(lines)
+
+
+def sync_cards_from_context(items: Sequence[Dict[str, Any]], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     own = conn is None
     cx = conn or connect()
     try:
-        created: List[Dict[str, Any]] = []
-        memory_dir = hermes_home() / "memories"
-        for filename in ("MEMORY.md", "USER.md"):
-            path = memory_dir / filename
-            if not path.exists():
+        cards = []
+        for item in items[:24]:
+            if item.get("status") == "hidden":
                 continue
-            for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                text = line.strip(" -\t")
-                if len(text) < 18:
-                    continue
-                lowered = text.lower()
-                domain = None
-                if any(word in lowered for word in ("stock", "ticker", "portfolio", "market")):
-                    domain = "stocks"
-                elif any(word in lowered for word in ("team", "soccer", "football", "match", "club")):
-                    domain = "sports"
-                elif any(word in lowered for word in ("weather", "location", "city", "commute")):
-                    domain = "weather"
-                elif any(word in lowered for word in ("news", "politics", "ai", "briefing")):
-                    domain = "news"
-                if not domain:
-                    continue
-                created.append(
-                    suggest(
-                        {
-                            "id": f"memory-topic:{domain}:{slugify(text[:60])}",
-                            "kind": "topic",
-                            "title": f"Track {domain}: {text[:80]}",
-                            "summary": f"Suggested from {filename}. Review before enabling.",
-                            "payload": {
-                                "topic": {
-                                    "domain": domain,
-                                    "label": text[:80],
-                                    "query": text,
-                                    "priority": "medium",
-                                    "cadence": "daily",
-                                    "config": {"source": filename},
-                                }
-                            },
-                        },
-                        cx,
-                    )
-                )
-        return {"created": created, "count": len(created)}
+            context_id = slugify(str(item.get("id") or ""), "context")
+            if not context_id:
+                continue
+            domain = slugify(str(item.get("domain") or "personal"), "personal")
+            summary = _clip_words(str(item.get("summary") or item.get("label") or ""), 260)
+            card = upsert_card(
+                {
+                    "id": f"auto-{context_id}",
+                    "topic_id": context_id,
+                    "domain": domain,
+                    "title": _card_title_for_context(item),
+                    "summary": summary,
+                    "detail_md": _detail_for_context(item),
+                    "priority": _priority_for_context(item),
+                    "status": "active",
+                    "source_label": _source_label_for_context(item),
+                    "why_shown": "Auto-discovered from Hermes memory and session history.",
+                    "confidence": item.get("confidence"),
+                    "payload": {
+                        "section": DOMAIN_SECTIONS.get(domain, "watching"),
+                        "auto_discovered": True,
+                        "context_item_id": context_id,
+                    },
+                },
+                cx,
+            )
+            cards.append(card)
+        return {"cards": cards, "count": len(cards)}
     finally:
         if own:
             cx.close()
 
 
-def dashboard_snapshot() -> Dict[str, Any]:
+def refresh_from_hermes_context(
+    include_sessions: bool = True,
+    include_cron: bool = True,
+    create_cards: bool = True,
+    conn: Optional[sqlite3.Connection] = None,
+) -> Dict[str, Any]:
+    own = conn is None
+    cx = conn or connect()
+    started_at = utc_now()
+    try:
+        sources = collect_hermes_sources(include_sessions=include_sessions, include_cron=include_cron)
+        items = infer_context_items(sources)
+        saved_items = [upsert_context_item(item, cx) for item in items]
+        card_result = sync_cards_from_context(saved_items, cx) if create_cards else {"cards": [], "count": 0}
+        put_preferences({"last_auto_refresh_at": utc_now(), "autonomous_mode": True}, cx)
+        run = record_refresh(
+            {
+                "job_key": "hermes-context-reflection",
+                "status": "success",
+                "summary": f"Scanned {len(sources)} Hermes source(s), inferred {len(saved_items)} context item(s), updated {card_result['count']} card(s).",
+                "started_at": started_at,
+                "payload": {
+                    "source_count": len(sources),
+                    "context_count": len(saved_items),
+                    "card_count": card_result["count"],
+                },
+            },
+            cx,
+        )
+        return {
+            "sources": len(sources),
+            "context_items": saved_items,
+            "cards": card_result["cards"],
+            "refresh_run": run,
+            "mode": "autonomous",
+        }
+    except Exception as exc:
+        record_refresh(
+            {
+                "job_key": "hermes-context-reflection",
+                "status": "error",
+                "summary": "Hermes context scan failed.",
+                "started_at": started_at,
+                "error": str(exc),
+            },
+            cx,
+        )
+        raise
+    finally:
+        if own:
+            cx.close()
+
+
+def auto_refresh_if_needed(conn: sqlite3.Connection, max_age_seconds: int = 600) -> Dict[str, Any]:
+    prefs = get_preferences(conn)
+    last = parse_time(prefs.get("last_auto_refresh_at"))
+    now = parse_time(utc_now())
+    if last and now and (now - last).total_seconds() < max_age_seconds:
+        return {
+            "refreshed": False,
+            "reason": "recent",
+            "last_auto_refresh_at": prefs.get("last_auto_refresh_at"),
+            "mode": "autonomous",
+        }
+    result = refresh_from_hermes_context(conn=conn)
+    return {
+        "refreshed": True,
+        "sources": result["sources"],
+        "context_count": len(result["context_items"]),
+        "card_count": len(result["cards"]),
+        "mode": "autonomous",
+    }
+
+
+def dashboard_snapshot(auto_refresh: bool = True) -> Dict[str, Any]:
     cx = connect()
     try:
+        automation = auto_refresh_if_needed(cx) if auto_refresh else {"refreshed": False, "mode": "autonomous"}
         cards = list_cards(conn=cx)
         return {
             "cards": cards,
-            "topics": list_topics(True, cx),
+            "context_items": list_context_items(conn=cx),
             "preferences": get_preferences(cx),
             "refresh_runs": list_refresh_runs(25, cx),
-            "suggestions": list_suggestions("pending", cx),
-            "setup": setup_status(cx),
+            "status": dashboard_status(cx),
+            "automation": automation,
         }
     finally:
         cx.close()

@@ -1,7 +1,7 @@
 {
   "name": "hermes-personal-dashboard",
   "label": "Personal Dashboard",
-  "description": "Generic daily briefing and situational awareness dashboard powered by Hermes jobs and memory-approved topics.",
+  "description": "Zero-setup dashboard that reflects useful context from Hermes memory, sessions, cron output, and agent work.",
   "icon": "LayoutDashboard",
   "version": "0.1.0",
   "tab": {

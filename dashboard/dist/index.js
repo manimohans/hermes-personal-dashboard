@@ -59,22 +59,9 @@
     if (payload.section) return payload.section;
     if (card.pinned || card.priority === "critical" || card.priority === "high") return "now";
     if (["weather", "calendar", "alerts"].indexOf(card.domain) >= 0) return "now";
-    if (["news", "daily", "daycare"].indexOf(card.domain) >= 0) return "today";
+    if (["news", "daily", "daycare", "family"].indexOf(card.domain) >= 0) return "today";
     if (["planning", "sports", "events"].indexOf(card.domain) >= 0) return "week";
     return "watching";
-  }
-
-  function Field(props) {
-    return h("label", { className: "hpd-field" },
-      h("span", null, props.label),
-      props.children
-    );
-  }
-
-  function TextInput(props) {
-    return h("input", Object.assign({
-      className: "hpd-input",
-    }, props));
   }
 
   function Button(props) {
@@ -145,15 +132,64 @@
     );
   }
 
+  function ReflectionPanel(props) {
+    const automation = props.automation || {};
+    const contextCount = (props.contextItems || []).length;
+    const cardCount = (props.cards || []).length;
+    const refreshed = automation.refreshed ? "Scanned just now" : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
+    return h("section", { className: "hpd-start" },
+      h("div", { className: "hpd-start-copy" },
+        h("p", { className: "hpd-eyebrow" }, "Zero setup"),
+        h("h2", null, "Reflecting Hermes context"),
+        h("div", { className: "hpd-checklist" },
+          h("span", { className: cx("hpd-checkitem", "is-done") }, h("span", { className: "hpd-checkmark" }, "OK"), "No configuration"),
+          h("span", { className: cx("hpd-checkitem", contextCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, contextCount > 0 ? "OK" : "-"), contextCount + " inferred"),
+          h("span", { className: cx("hpd-checkitem", cardCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, cardCount > 0 ? "OK" : "-"), cardCount + " cards"),
+          h("span", { className: "hpd-checkitem" }, h("span", { className: "hpd-checkmark" }, "-"), refreshed)
+        )
+      ),
+      h("div", { className: "hpd-start-actions" },
+        h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan Hermes now"),
+        h(Button, { variant: "secondary", onClick: props.onCreateCron }, "Create refresh jobs")
+      )
+    );
+  }
+
+  function ContextPanel(props) {
+    const items = props.items || [];
+    return h("section", { className: "hpd-section hpd-activity" },
+      h("div", { className: "hpd-section-head" },
+        h("h2", null, "Inferred Context"),
+        h(Badge, null, String(items.length))
+      ),
+      h("div", { className: "hpd-activity-grid" },
+        h("div", { className: "hpd-panel" },
+          h("h3", null, "What Hermes appears to care about"),
+          items.length ? items.slice(0, 12).map(function (item) {
+            const sources = (item.source_types || []).join(", ");
+            return h("div", { key: item.id, className: "hpd-context" },
+              h("div", null,
+                h("strong", null, (item.domain || "personal") + ": " + item.label),
+                h("p", null, (item.summary || "Inferred from Hermes context.") + (sources ? " Sources: " + sources + "." : ""))
+              ),
+              h("div", { className: "hpd-inline-actions" },
+                h(Button, { variant: "ghost", onClick: function () { props.onHideContext(item.id); } }, "Hide")
+              )
+            );
+          }) : h("div", { className: "hpd-empty" }, "No Hermes memory, session, or cron context found yet. This fills in automatically as Hermes works.")
+        )
+      )
+    );
+  }
+
   function Activity(props) {
     const runs = props.runs || [];
-    const suggestions = props.suggestions || [];
     return h("section", { className: "hpd-section hpd-activity" },
       h("div", { className: "hpd-section-head" }, h("h2", null, "Hermes Activity")),
       h("div", { className: "hpd-activity-grid" },
         h("div", { className: "hpd-panel" },
           h("h3", null, "Refreshes"),
-          runs.length ? runs.slice(0, 8).map(function (run) {
+          runs.length ? runs.slice(0, 10).map(function (run) {
             return h("div", { key: run.id, className: "hpd-run" },
               h("span", { className: cx("hpd-dot", run.status === "error" && "is-error") }),
               h("div", null,
@@ -162,187 +198,6 @@
               )
             );
           }) : h("div", { className: "hpd-empty" }, "No refreshes yet.")
-        ),
-        h("div", { className: "hpd-panel" },
-          h("h3", null, "Suggestions"),
-          suggestions.length ? suggestions.slice(0, 8).map(function (item) {
-            return h("div", { key: item.id, className: "hpd-suggestion" },
-              h("div", null,
-                h("strong", null, item.title),
-                item.summary ? h("p", null, item.summary) : null
-              ),
-              h("div", { className: "hpd-inline-actions" },
-                h(Button, { variant: "ghost", onClick: function () { props.onAcceptSuggestion(item.id); } }, "Accept"),
-                h(Button, { variant: "ghost", onClick: function () { props.onDismissSuggestion(item.id); } }, "Dismiss")
-              )
-            );
-          }) : h("div", { className: "hpd-empty" }, "No pending suggestions.")
-        )
-      )
-    );
-  }
-
-  function TopicRow(props) {
-    const topic = props.topic;
-    return h("div", { className: "hpd-topic" },
-      h("div", null,
-        h("strong", null, topic.label),
-        h("p", null, [topic.domain, topic.cadence || "manual", topic.enabled ? "enabled" : "disabled"].join(" - "))
-      ),
-      h(Button, { variant: "ghost", onClick: function () { props.onDelete(topic.id); } }, "Remove")
-    );
-  }
-
-  function FirstRunPanel(props) {
-    const setup = props.setup || {};
-    const hasTopics = (props.topics || []).length > 0;
-    const hasCards = (props.cards || []).length > 0;
-    const cronJobs = ((props.preferences || {}).cron_jobs) || {};
-    const hasJobs = Object.keys(cronJobs).length > 0;
-    const items = [
-      { label: "Save setup", done: Boolean(setup.configured) },
-      { label: "Add topics", done: hasTopics },
-      { label: "Create jobs", done: hasJobs },
-      { label: "Receive cards", done: hasCards },
-    ];
-    if (setup.configured && hasTopics && hasJobs && hasCards) return null;
-    return h("section", { className: "hpd-start" },
-      h("div", { className: "hpd-start-copy" },
-        h("p", { className: "hpd-eyebrow" }, "Start here"),
-        h("h2", null, "Set up your briefing board"),
-        h("div", { className: "hpd-checklist" },
-          items.map(function (item) {
-            return h("span", { key: item.label, className: cx("hpd-checkitem", item.done && "is-done") },
-              h("span", { className: "hpd-checkmark" }, item.done ? "OK" : "-"),
-              item.label
-            );
-          })
-        )
-      ),
-      h("div", { className: "hpd-start-actions" },
-        h(Button, { onClick: props.onAddStarterTopics }, "Add starter topics"),
-        h(Button, { variant: "secondary", onClick: props.onCreateSampleCards }, "Show sample cards"),
-        h(Button, { variant: "secondary", onClick: props.onCreateCron }, "Create jobs")
-      )
-    );
-  }
-
-  function SetupPanel(props) {
-    const setup = props.setup || {};
-    const prefs = setup.preferences || props.preferences || {};
-    const [draft, setDraft] = React.useState({
-      briefing_time: prefs.briefing_time || "07:30",
-      timezone: prefs.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-      location: prefs.location || "",
-      alert_frequency: prefs.alert_frequency || "hourly",
-      calendar_enabled: Boolean(prefs.calendar_enabled),
-      weekend_planner: prefs.weekend_planner !== false,
-    });
-    const [topic, setTopic] = React.useState({ domain: "news", label: "", query: "", cadence: "daily" });
-
-    React.useEffect(function () {
-      setDraft({
-        briefing_time: prefs.briefing_time || "07:30",
-        timezone: prefs.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-        location: prefs.location || "",
-        alert_frequency: prefs.alert_frequency || "hourly",
-        calendar_enabled: Boolean(prefs.calendar_enabled),
-        weekend_planner: prefs.weekend_planner !== false,
-      });
-    }, [prefs.briefing_time, prefs.timezone, prefs.location, prefs.alert_frequency, prefs.calendar_enabled, prefs.weekend_planner]);
-
-    function update(key, value) {
-      setDraft(Object.assign({}, draft, { [key]: value }));
-    }
-
-    function updateTopic(key, value) {
-      setTopic(Object.assign({}, topic, { [key]: value }));
-    }
-
-    return h("section", { className: "hpd-section hpd-setup" },
-      h("div", { className: "hpd-section-head" },
-        h("h2", null, "Setup"),
-        setup.configured ? h(Badge, { className: "hpd-badge-pin" }, "Configured") : h(Badge, null, "New")
-      ),
-      h("div", { className: "hpd-setup-grid" },
-        h("div", { className: "hpd-panel" },
-          h("h3", null, "Briefing"),
-          h("div", { className: "hpd-form-grid" },
-            h(Field, { label: "Briefing time" }, h(TextInput, {
-              value: draft.briefing_time,
-              onChange: function (e) { update("briefing_time", e.target.value); },
-            })),
-            h(Field, { label: "Timezone" }, h(TextInput, {
-              value: draft.timezone,
-              onChange: function (e) { update("timezone", e.target.value); },
-            })),
-            h(Field, { label: "Location" }, h(TextInput, {
-              value: draft.location,
-              onChange: function (e) { update("location", e.target.value); },
-            })),
-            h(Field, { label: "Alert frequency" },
-              h("select", {
-                className: "hpd-input",
-                value: draft.alert_frequency,
-                onChange: function (e) { update("alert_frequency", e.target.value); },
-              },
-                h("option", { value: "hourly" }, "Hourly"),
-                h("option", { value: "30m" }, "Every 30 minutes"),
-                h("option", { value: "15m" }, "Every 15 minutes"),
-                h("option", { value: "daily" }, "Daily")
-              )
-            )
-          ),
-          h("div", { className: "hpd-checks" },
-            h("label", null, h("input", {
-              type: "checkbox",
-              checked: draft.calendar_enabled,
-              onChange: function (e) { update("calendar_enabled", e.target.checked); },
-            }), " Calendar"),
-            h("label", null, h("input", {
-              type: "checkbox",
-              checked: draft.weekend_planner,
-              onChange: function (e) { update("weekend_planner", e.target.checked); },
-            }), " Weekend planner")
-          ),
-          h("div", { className: "hpd-inline-actions" },
-            h(Button, { onClick: function () { props.onSaveSetup(draft); } }, "Save setup"),
-            h(Button, { variant: "secondary", onClick: props.onCreateCron }, "Create jobs")
-          )
-        ),
-        h("div", { className: "hpd-panel" },
-          h("h3", null, "Topics"),
-          h("div", { className: "hpd-form-grid" },
-            h(Field, { label: "Domain" }, h(TextInput, {
-              value: topic.domain,
-              onChange: function (e) { updateTopic("domain", e.target.value); },
-            })),
-            h(Field, { label: "Label" }, h(TextInput, {
-              value: topic.label,
-              onChange: function (e) { updateTopic("label", e.target.value); },
-            })),
-            h(Field, { label: "Query" }, h(TextInput, {
-              value: topic.query,
-              onChange: function (e) { updateTopic("query", e.target.value); },
-            })),
-            h(Field, { label: "Cadence" }, h(TextInput, {
-              value: topic.cadence,
-              onChange: function (e) { updateTopic("cadence", e.target.value); },
-            }))
-          ),
-          h("div", { className: "hpd-inline-actions" },
-            h(Button, { onClick: function () { props.onAddTopic(topic); setTopic({ domain: "news", label: "", query: "", cadence: "daily" }); } }, "Add topic"),
-            h(Button, { variant: "secondary", onClick: props.onAddStarterTopics }, "Starter topics"),
-            h(Button, { variant: "secondary", onClick: props.onDiscover }, "Discover"),
-            h(Button, { variant: "secondary", onClick: props.onCreateSampleCards }, "Sample cards")
-          ),
-          h("div", { className: "hpd-topic-list" },
-            (props.topics || []).length
-              ? props.topics.map(function (item) {
-                  return h(TopicRow, { key: item.id, topic: item, onDelete: props.onDeleteTopic });
-                })
-              : h("div", { className: "hpd-empty" }, "No topics configured.")
-          )
         )
       )
     );
@@ -351,6 +206,7 @@
   function PersonalDashboard() {
     const [snapshot, setSnapshot] = React.useState(null);
     const [loading, setLoading] = React.useState(true);
+    const [mutating, setMutating] = React.useState(false);
     const [error, setError] = React.useState("");
 
     const load = React.useCallback(function () {
@@ -373,16 +229,27 @@
     }, [load]);
 
     function mutate(promise) {
-      return promise.then(load).catch(function (err) { setError(err.message || String(err)); });
+      setMutating(true);
+      return promise
+        .then(load)
+        .catch(function (err) { setError(err.message || String(err)); })
+        .finally(function () { setMutating(false); });
     }
 
     const cards = snapshot ? (snapshot.cards || []) : [];
+    const contextItems = snapshot ? (snapshot.context_items || []) : [];
     const grouped = { now: [], today: [], week: [], watching: [] };
     cards.forEach(function (card) {
       const key = sectionFor(card);
       if (grouped[key]) grouped[key].push(card);
       else grouped.watching.push(card);
     });
+
+    const cardActions = {
+      onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
+      onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
+      onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
+    };
 
     return h("main", { className: "hpd-root" },
       h("header", { className: "hpd-header" },
@@ -391,79 +258,54 @@
           h("h1", null, "Personal Dashboard")
         ),
         h("div", { className: "hpd-header-actions" },
-          snapshot && snapshot.setup && snapshot.setup.configured ? h(Badge, { className: "hpd-badge-pin" }, "Configured") : h(Badge, null, "Setup needed"),
-          h(Button, { variant: "secondary", onClick: load, disabled: loading }, loading ? "Refreshing" : "Refresh")
+          h(Badge, { className: "hpd-badge-pin" }, "Autonomous"),
+          h(Button, { variant: "secondary", onClick: load, disabled: loading || mutating }, loading ? "Refreshing" : "Refresh")
         )
       ),
       error ? h("div", { className: "hpd-error" }, error) : null,
-      loading && !snapshot ? h("div", { className: "hpd-empty hpd-loading" }, "Loading dashboard.") : null,
+      loading && !snapshot ? h("div", { className: "hpd-empty hpd-loading" }, "Reading Hermes memory and session context.") : null,
       snapshot ? h(React.Fragment, null,
-        h(FirstRunPanel, {
-          setup: snapshot.setup,
-          topics: snapshot.topics || [],
+        h(ReflectionPanel, {
+          automation: snapshot.automation || {},
+          contextItems: contextItems,
           cards: cards,
-          preferences: snapshot.preferences || {},
-          onAddStarterTopics: function () { mutate(request("/setup/starter-topics", { method: "POST" })); },
-          onCreateSampleCards: function () { mutate(request("/setup/sample-cards", { method: "POST" })); },
-          onCreateCron: function () { mutate(request("/setup/create-cron-jobs", { method: "POST", body: JSON.stringify({}) })); },
+          loading: mutating,
+          onScanNow: function () {
+            mutate(request("/context/refresh", {
+              method: "POST",
+              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: true }),
+            }));
+          },
+          onCreateCron: function () { mutate(request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) })); },
         }),
         h("div", { className: "hpd-sections" },
-          h(CardSection, {
+          h(CardSection, Object.assign({
             title: "Now",
             cards: grouped.now,
-            empty: "No urgent cards.",
-            onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
-            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
-            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
-          }),
-          h(CardSection, {
+            empty: "No urgent Hermes-derived cards.",
+          }, cardActions)),
+          h(CardSection, Object.assign({
             title: "Today",
             cards: grouped.today,
-            empty: "No cards for today.",
-            onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
-            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
-            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
-          }),
-          h(CardSection, {
+            empty: "No daily Hermes-derived cards.",
+          }, cardActions)),
+          h(CardSection, Object.assign({
             title: "This Week",
             cards: grouped.week,
-            empty: "No weekly cards.",
-            onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
-            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
-            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
-          }),
-          h(CardSection, {
+            empty: "No weekly Hermes-derived cards.",
+          }, cardActions)),
+          h(CardSection, Object.assign({
             title: "Watching",
             cards: grouped.watching,
-            empty: "No watched-topic cards.",
-            onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
-            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
-            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
-          })
+            empty: "No long-running Hermes-derived watches.",
+          }, cardActions))
         ),
+        h(ContextPanel, {
+          items: contextItems,
+          onHideContext: function (id) { mutate(request("/context/" + encodeURIComponent(id) + "/hide", { method: "POST" })); },
+        }),
         h(Activity, {
           runs: snapshot.refresh_runs || [],
-          suggestions: snapshot.suggestions || [],
-          onAcceptSuggestion: function (id) { mutate(request("/suggestions/" + encodeURIComponent(id) + "/accept", { method: "POST" })); },
-          onDismissSuggestion: function (id) { mutate(request("/suggestions/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
-        }),
-        h(SetupPanel, {
-          setup: snapshot.setup,
-          preferences: snapshot.preferences || {},
-          topics: snapshot.topics || [],
-          onSaveSetup: function (draft) { mutate(request("/setup/save", { method: "POST", body: JSON.stringify(draft) })); },
-          onCreateCron: function () { mutate(request("/setup/create-cron-jobs", { method: "POST", body: JSON.stringify({}) })); },
-          onAddStarterTopics: function () { mutate(request("/setup/starter-topics", { method: "POST" })); },
-          onCreateSampleCards: function () { mutate(request("/setup/sample-cards", { method: "POST" })); },
-          onDiscover: function () { mutate(request("/suggestions/discover", { method: "POST" })); },
-          onAddTopic: function (topic) {
-            if (!topic.label.trim()) {
-              setError("Topic label is required.");
-              return;
-            }
-            mutate(request("/topics", { method: "POST", body: JSON.stringify(topic) }));
-          },
-          onDeleteTopic: function (id) { mutate(request("/topics/" + encodeURIComponent(id), { method: "DELETE" })); },
         })
       ) : null
     );

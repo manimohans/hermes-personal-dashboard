@@ -341,7 +341,7 @@
 }
 
 .hpd-run,
-.hpd-suggestion,
+.hpd-context,
 .hpd-topic {
   align-items: flex-start;
   border-top: 1px solid hsl(var(--border));
@@ -352,20 +352,20 @@
 }
 
 .hpd-run:first-of-type,
-.hpd-suggestion:first-of-type,
+.hpd-context:first-of-type,
 .hpd-topic:first-of-type {
   border-top: 0;
   padding-top: 0;
 }
 
 .hpd-run strong,
-.hpd-suggestion strong,
+.hpd-context strong,
 .hpd-topic strong {
   font-size: 13px;
 }
 
 .hpd-run p,
-.hpd-suggestion p,
+.hpd-context p,
 .hpd-topic p {
   color: hsl(var(--muted-foreground));
   font-size: 12px;
@@ -435,7 +435,7 @@
   .hpd-start,
   .hpd-card-top,
   .hpd-run,
-  .hpd-suggestion,
+  .hpd-context,
   .hpd-topic {
     align-items: stretch;
     flex-direction: column;

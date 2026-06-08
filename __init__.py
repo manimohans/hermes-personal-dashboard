@@ -13,18 +13,19 @@ from . import schemas
 def _cron_prompt(kind: str) -> str:
     base = (
         "Use the hermes-personal-dashboard:briefing-curator skill. "
-        "Read personal_dashboard_get_preferences and personal_dashboard_get_topics. "
-        "Fetch only the user-configured generic topics with available Hermes tools. "
+        "Start with personal_dashboard_refresh_from_hermes so the dashboard reflects "
+        "existing Hermes memory, sessions, cron output, and prior agent work without "
+        "requiring user setup. Then read personal_dashboard_list_context and use the "
+        "available Hermes tools to refresh useful live cards for the inferred context. "
         "Write structured cards with personal_dashboard_upsert_card and record the run "
-        "with personal_dashboard_record_refresh. Do not infer or expose private topics "
-        "that the user has not configured or accepted."
+        "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
-        return f"{base} Produce the morning daily briefing dashboard refresh."
+        return f"{base} Produce the autonomous morning dashboard refresh."
     if kind == "alerts":
-        return f"{base} Refresh time-sensitive alert cards such as weather, stocks, sports, news, and calendar items."
+        return f"{base} Refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, project, and alert items inferred from Hermes context."
     if kind == "weekend":
-        return f"{base} Produce a weekend planning refresh using configured location, calendar preference, weather, events, and interests."
+        return f"{base} Produce a weekend/planning refresh from whatever Hermes already knows is relevant."
     return base
 
 
@@ -66,14 +67,17 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
     if existing and not force:
         return {"created": [], "existing": existing, "skipped": True}
 
-    from cron import jobs as cron_jobs
+    try:
+        from cron import jobs as cron_jobs
+    except Exception as exc:
+        core.put_preferences({"cron_unavailable": str(exc)})
+        return {"created": [], "existing": existing, "skipped": True, "error": f"cron integration unavailable: {exc}"}
 
     schedules = {
-        "morning": _parse_hhmm(prefs.get("briefing_time")),
-        "alerts": _alert_schedule(prefs.get("alert_frequency")),
+        "morning": _parse_hhmm(prefs.get("briefing_time") or "07:30"),
+        "alerts": _alert_schedule(prefs.get("alert_frequency") or "hourly"),
     }
-    if prefs.get("weekend_planner", True):
-        schedules["weekend"] = "0 15 * * 5"
+    schedules["weekend"] = "0 15 * * 5"
 
     created = []
     cron_job_ids: Dict[str, str] = {}
@@ -144,16 +148,19 @@ def _handle_record_refresh(params: Dict[str, Any]) -> Any:
     return core.record_refresh(params)
 
 
-def _handle_suggest_card(params: Dict[str, Any]) -> Any:
-    return core.suggest(params)
+def _handle_upsert_context(params: Dict[str, Any]) -> Any:
+    return core.upsert_context_item(params)
 
 
-def _handle_upsert_topic(params: Dict[str, Any]) -> Any:
-    return core.upsert_topic(params)
+def _handle_list_context(params: Dict[str, Any]) -> Any:
+    return core.list_context_items(
+        include_hidden=bool(params.get("include_hidden", False)),
+        limit=int(params.get("limit") or 100),
+    )
 
 
-def _handle_get_topics(params: Dict[str, Any]) -> Any:
-    return core.list_topics(include_disabled=bool(params.get("include_disabled", True)))
+def _handle_hide_context(params: Dict[str, Any]) -> Any:
+    return core.hide_context_item(str(params.get("id") or ""))
 
 
 def _handle_get_preferences(params: Dict[str, Any]) -> Any:
@@ -162,50 +169,20 @@ def _handle_get_preferences(params: Dict[str, Any]) -> Any:
 
 
 def _handle_get_snapshot(params: Dict[str, Any]) -> Any:
-    del params
-    return core.dashboard_snapshot()
-
-
-def _handle_save_setup(params: Dict[str, Any]) -> Any:
-    return core.save_setup(params)
-
-
-def _handle_add_starter_topics(params: Dict[str, Any]) -> Any:
-    del params
-    return core.add_starter_topics()
-
-
-def _handle_create_sample_cards(params: Dict[str, Any]) -> Any:
-    del params
-    return core.create_sample_cards()
+    auto_refresh = params.get("auto_refresh")
+    return core.dashboard_snapshot(auto_refresh=True if auto_refresh is None else bool(auto_refresh))
 
 
 def _handle_create_cron_jobs(params: Dict[str, Any]) -> Any:
     return _create_standard_cron_jobs(force=bool(params.get("force", False)))
 
 
-def _handle_quickstart(params: Dict[str, Any]) -> Any:
-    setup_keys = {
-        "briefing_time",
-        "timezone",
-        "location",
-        "alert_frequency",
-        "calendar_enabled",
-        "weekend_planner",
-        "source_preferences",
-        "topics",
-    }
-    setup_payload = {key: params[key] for key in setup_keys if key in params}
-    result: Dict[str, Any] = {}
-    if setup_payload:
-        result["setup"] = core.save_setup(setup_payload)
-    result["starter_topics"] = core.add_starter_topics()
-    if bool(params.get("create_sample_cards", True)):
-        result["sample_cards"] = core.create_sample_cards()
-    if bool(params.get("create_cron_jobs", False)):
-        result["cron_jobs"] = _create_standard_cron_jobs(force=False)
-    result["snapshot"] = core.dashboard_snapshot()
-    return result
+def _handle_refresh_from_hermes(params: Dict[str, Any]) -> Any:
+    return core.refresh_from_hermes_context(
+        include_sessions=bool(params.get("include_sessions", True)),
+        include_cron=bool(params.get("include_cron", True)),
+        create_cards=bool(params.get("create_cards", True)),
+    )
 
 
 _HANDLERS = {
@@ -215,16 +192,13 @@ _HANDLERS = {
     "personal_dashboard_add_evidence": _handle_add_evidence,
     "personal_dashboard_list_cards": _handle_list_cards,
     "personal_dashboard_record_refresh": _handle_record_refresh,
-    "personal_dashboard_suggest_card": _handle_suggest_card,
-    "personal_dashboard_upsert_topic": _handle_upsert_topic,
-    "personal_dashboard_get_topics": _handle_get_topics,
-    "personal_dashboard_get_preferences": _handle_get_preferences,
+    "personal_dashboard_upsert_context": _handle_upsert_context,
+    "personal_dashboard_list_context": _handle_list_context,
+    "personal_dashboard_hide_context": _handle_hide_context,
     "personal_dashboard_get_snapshot": _handle_get_snapshot,
-    "personal_dashboard_save_setup": _handle_save_setup,
-    "personal_dashboard_add_starter_topics": _handle_add_starter_topics,
-    "personal_dashboard_create_sample_cards": _handle_create_sample_cards,
+    "personal_dashboard_refresh_from_hermes": _handle_refresh_from_hermes,
+    "personal_dashboard_get_preferences": _handle_get_preferences,
     "personal_dashboard_create_cron_jobs": _handle_create_cron_jobs,
-    "personal_dashboard_quickstart": _handle_quickstart,
 }
 
 
@@ -232,16 +206,15 @@ _HELP = """\
 /personal-dashboard - Hermes Personal Dashboard
 
 Subcommands:
-  status           Show setup, card, topic, refresh, and suggestion counts
-  starter-topics   Add generic starter topics for common dashboard domains
-  sample-cards     Create generic sample cards so the dashboard is not blank
-  quickstart       Add starter topics and sample cards in one step
-  create-jobs      Create the standard Hermes cron refresh jobs
-  discover         Scan Hermes memory for pending topic suggestions
+  status           Show card, inferred context, source, and refresh counts
+  refresh          Scan Hermes memory, sessions, and cron output now
+  context          List the top inferred context items
+  create-jobs      Create autonomous Hermes cron refresh jobs
   help             Show this help
 
 Open the visual dashboard from `hermes dashboard` at the Personal Dashboard tab.
-The dashboard setup wizard configures generic topics, schedules, and source preferences.
+No setup is required. The dashboard reflects what Hermes already knows from memory,
+session history, cron output, and prior agent work.
 """
 
 
@@ -253,38 +226,37 @@ def _handle_slash(raw_args: str) -> str:
             return _HELP
         if sub == "status":
             snapshot = core.dashboard_snapshot()
+            automation = snapshot.get("automation") or {}
             return (
                 "Hermes Personal Dashboard\n"
-                f"  configured: {snapshot['setup']['configured']}\n"
+                "  mode: autonomous\n"
                 f"  cards: {len(snapshot['cards'])}\n"
-                f"  topics: {len(snapshot['topics'])}\n"
+                f"  inferred context: {len(snapshot['context_items'])}\n"
                 f"  refresh runs: {len(snapshot['refresh_runs'])}\n"
-                f"  pending suggestions: {len(snapshot['suggestions'])}\n"
+                f"  last scan refreshed: {automation.get('refreshed')}\n"
                 f"  db: {core.db_path()}"
             )
-        if sub in {"starter-topics", "starters"}:
-            result = core.add_starter_topics()
-            return f"Added or updated {result['count']} starter topic(s). Open the dashboard Setup panel to customize them."
-        if sub in {"sample-cards", "demo"}:
-            result = core.create_sample_cards()
-            return f"Created or updated {result['count']} sample card(s). Dismiss them when you are ready for live cards."
-        if sub in {"quickstart", "setup"}:
-            topics = core.add_starter_topics()
-            cards = core.create_sample_cards()
+        if sub == "refresh":
+            result = core.refresh_from_hermes_context()
             return (
-                "Hermes Personal Dashboard quickstart complete.\n"
-                f"  starter topics: {topics['count']}\n"
-                f"  sample cards: {cards['count']}\n"
-                "Next: open the Personal Dashboard tab, add your location/time, save setup, then create jobs."
+                "Hermes Personal Dashboard refreshed from Hermes context.\n"
+                f"  sources scanned: {result['sources']}\n"
+                f"  inferred context: {len(result['context_items'])}\n"
+                f"  cards updated: {len(result['cards'])}"
             )
+        if sub == "context":
+            items = core.list_context_items(limit=12)
+            if not items:
+                return "No inferred context items yet. Open the dashboard or run `/personal-dashboard refresh` after Hermes has memory or sessions."
+            lines = ["Top inferred dashboard context:"]
+            for item in items:
+                lines.append(f"  - {item['domain']}: {item['label']}")
+            return "\n".join(lines)
         if sub in {"create-jobs", "jobs"}:
             result = _create_standard_cron_jobs(force=False)
             if result.get("skipped"):
                 return f"Cron jobs already exist: {result['existing']}"
             return f"Created {len(result.get('created') or [])} cron job(s)."
-        if sub == "discover":
-            result = core.discover_suggestions_from_memory()
-            return f"Created {result['count']} pending suggestion(s). Review them in the dashboard Setup tab."
         return f"Unknown subcommand: {sub}\n\n{_HELP}"
     except Exception as exc:
         return f"personal-dashboard failed: {exc}"

@@ -26,8 +26,8 @@ if command -v hermes >/dev/null 2>&1; then
   echo "  hermes plugins enable ${PLUGIN_NAME}"
   echo "  hermes dashboard"
   echo
-  echo "Then open the Personal Dashboard tab and use:"
-  echo "  Add starter topics -> Save setup -> Create jobs"
+  echo "Then open the Personal Dashboard tab."
+  echo "It scans existing Hermes memory and sessions automatically."
 else
   echo
   echo "Hermes was not found on PATH."

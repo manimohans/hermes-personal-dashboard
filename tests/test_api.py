@@ -81,43 +81,29 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(unpinned.status_code, 200)
         self.assertFalse(unpinned.json()["card"]["pinned"])
 
-    def test_topics_setup_and_suggestions_routes(self) -> None:
-        setup = self.client.post(
-            "/setup/save",
-            json={
-                "briefing_time": "07:45",
-                "timezone": "America/Los_Angeles",
-                "topics": [{"domain": "news", "label": "Technology", "query": "technology news"}],
-            },
+    def test_context_refresh_and_hide_routes(self) -> None:
+        memory_dir = Path(self.tmp.name) / "memories"
+        memory_dir.mkdir(parents=True)
+        (memory_dir / "MEMORY.md").write_text(
+            "- User wants morning AI news and stock alerts.\n",
+            encoding="utf-8",
         )
-        self.assertEqual(setup.status_code, 200)
-        self.assertTrue(setup.json()["configured"])
 
-        topics = self.client.get("/topics")
-        self.assertEqual(topics.status_code, 200)
-        self.assertEqual(len(topics.json()["topics"]), 1)
-
-        starters = self.client.post("/setup/starter-topics")
-        self.assertEqual(starters.status_code, 200)
-        self.assertEqual(starters.json()["count"], 6)
-
-        samples = self.client.post("/setup/sample-cards")
-        self.assertEqual(samples.status_code, 200)
-        self.assertEqual(samples.json()["count"], 4)
-
-        suggestion = self.client.post(
-            "/suggestions",
-            json={
-                "title": "Suggested topic",
-                "payload": {"topic": {"domain": "sports", "label": "Example team"}},
-            },
+        refresh = self.client.post(
+            "/context/refresh",
+            json={"include_sessions": False, "include_cron": False, "create_cards": True},
         )
-        self.assertEqual(suggestion.status_code, 200)
-        suggestion_id = suggestion.json()["suggestion"]["id"]
+        self.assertEqual(refresh.status_code, 200)
+        self.assertGreaterEqual(len(refresh.json()["context_items"]), 1)
+        self.assertGreaterEqual(len(refresh.json()["cards"]), 1)
 
-        accepted = self.client.post(f"/suggestions/{suggestion_id}/accept")
-        self.assertEqual(accepted.status_code, 200)
-        self.assertEqual(accepted.json()["suggestion"]["status"], "accepted")
+        context = self.client.get("/context")
+        self.assertEqual(context.status_code, 200)
+        context_id = context.json()["context_items"][0]["id"]
+
+        hidden = self.client.post(f"/context/{context_id}/hide")
+        self.assertEqual(hidden.status_code, 200)
+        self.assertEqual(hidden.json()["context_item"]["status"], "hidden")
 
     def test_refresh_routes_and_snapshot(self) -> None:
         refresh = self.client.post(
@@ -127,9 +113,10 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(refresh.status_code, 200)
         self.assertEqual(refresh.json()["refresh_run"]["job_key"], "morning")
 
-        snapshot = self.client.get("/snapshot")
+        snapshot = self.client.get("/snapshot?auto_refresh=false")
         self.assertEqual(snapshot.status_code, 200)
         self.assertEqual(len(snapshot.json()["refresh_runs"]), 1)
+        self.assertFalse(snapshot.json()["status"]["requires_configuration"])
 
 
 if __name__ == "__main__":

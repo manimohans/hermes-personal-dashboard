@@ -71,27 +71,30 @@ class PluginRegistrationTest(unittest.TestCase):
         return payload["data"]
 
     def test_registers_full_user_friendly_surface(self) -> None:
-        self.assertEqual(len(self.ctx.tools), 16)
-        self.assertIn("personal_dashboard_quickstart", self.ctx.tools)
-        self.assertIn("personal_dashboard_save_setup", self.ctx.tools)
+        self.assertEqual(len(self.ctx.tools), 13)
+        self.assertIn("personal_dashboard_refresh_from_hermes", self.ctx.tools)
+        self.assertIn("personal_dashboard_list_context", self.ctx.tools)
+        self.assertIn("personal_dashboard_hide_context", self.ctx.tools)
         self.assertIn("personal_dashboard_create_cron_jobs", self.ctx.tools)
         self.assertIn("personal-dashboard", self.ctx.commands)
         self.assertIn("briefing-curator", self.ctx.skills)
 
-    def test_quickstart_creates_starters_and_samples(self) -> None:
-        data = self.call_tool(
-            "personal_dashboard_quickstart",
-            {
-                "briefing_time": "08:00",
-                "timezone": "America/Los_Angeles",
-                "location": "San Francisco",
-                "create_cron_jobs": False,
-            },
+    def test_refresh_from_memory_creates_context_and_cards(self) -> None:
+        memory_dir = Path(self.tmp.name) / "memories"
+        memory_dir.mkdir(parents=True)
+        (memory_dir / "MEMORY.md").write_text(
+            "- User wants a morning AI news briefing and stock alerts.\n",
+            encoding="utf-8",
         )
-        self.assertEqual(data["starter_topics"]["count"], 6)
-        self.assertEqual(data["sample_cards"]["count"], 4)
-        self.assertTrue(data["snapshot"]["setup"]["configured"])
-        self.assertEqual(data["snapshot"]["preferences"]["location"], "San Francisco")
+        data = self.call_tool(
+            "personal_dashboard_refresh_from_hermes",
+            {"include_sessions": False, "include_cron": False, "create_cards": True},
+        )
+        self.assertGreaterEqual(len(data["context_items"]), 1)
+        self.assertGreaterEqual(len(data["cards"]), 1)
+        domains = {item["domain"] for item in data["context_items"]}
+        self.assertIn("news", domains)
+        self.assertIn("stocks", domains)
 
     def test_patch_card_tool_updates_existing_card(self) -> None:
         self.call_tool(
@@ -106,11 +109,17 @@ class PluginRegistrationTest(unittest.TestCase):
         self.assertTrue(patched["pinned"])
         self.assertEqual(patched["status"], "pinned")
 
-    def test_slash_quickstart_is_helpful(self) -> None:
-        message = self.ctx.commands["personal-dashboard"]["handler"]("quickstart")
-        self.assertIn("quickstart complete", message)
-        self.assertIn("starter topics: 6", message)
-        self.assertIn("sample cards: 4", message)
+    def test_slash_refresh_is_zero_setup(self) -> None:
+        memory_dir = Path(self.tmp.name) / "memories"
+        memory_dir.mkdir(parents=True)
+        (memory_dir / "MEMORY.md").write_text(
+            "- User tracks weekend planning and local weather.\n",
+            encoding="utf-8",
+        )
+        message = self.ctx.commands["personal-dashboard"]["handler"]("refresh")
+        self.assertIn("refreshed from Hermes context", message)
+        self.assertIn("sources scanned:", message)
+        self.assertIn("cards updated:", message)
 
 
 if __name__ == "__main__":

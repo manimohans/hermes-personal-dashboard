@@ -54,8 +54,9 @@
   <div class="preview-shell">
     <div class="preview-note">
       <strong>Preview mode.</strong>
-      This page loads the real dashboard bundle with mocked Hermes API data.
-      It is for trying the UI before installing Hermes.
+      This page loads the real dashboard bundle with mocked Hermes memory,
+      session, and cron data. It is for trying the zero-setup UI before
+      installing Hermes.
     </div>
     <div id="preview-root"></div>
   </div>
@@ -70,72 +71,98 @@
       var state = {
         cards: [
           {
-            id: "preview-weather",
-            domain: "weather",
-            title: "Light rain clearing by noon",
-            summary: "Carry a jacket this morning. The afternoon looks dry enough for outdoor plans.",
-            priority: "high",
-            status: "active",
-            pinned: false,
-            updated_at: now,
-            source_label: "Preview weather",
-            why_shown: "Configured location",
-            payload: { section: "now" }
-          },
-          {
-            id: "preview-news",
+            id: "auto-context-news-ai",
+            context_id: "context-news-ai",
             domain: "news",
-            title: "Morning briefing ready",
-            summary: "Three configured topics have meaningful updates. Lower-signal items were skipped.",
+            title: "AI news briefing",
+            summary: "Hermes inferred that AI news belongs in the morning briefing from memory and prior sessions.",
             priority: "medium",
             status: "active",
             pinned: false,
             updated_at: now,
-            source_label: "Preview briefing",
-            why_shown: "Configured news topics",
-            payload: { section: "today" }
+            source_label: "Hermes memory, Hermes sessions",
+            why_shown: "Auto-discovered from Hermes memory and session history.",
+            payload: { section: "today", auto_discovered: true, context_item_id: "context-news-ai" }
           },
           {
-            id: "preview-weekend",
-            domain: "planning",
-            title: "Weekend plan draft",
-            summary: "Saturday morning is the best weather window. Sunday looks better for indoor plans.",
+            id: "auto-context-weather-local",
+            context_id: "context-weather-local",
+            domain: "weather",
+            title: "Local weather watch",
+            summary: "Hermes found weather and weekend planning references, so weather-impacting cards appear in Now.",
             priority: "medium",
             status: "active",
             pinned: false,
             updated_at: now,
-            source_label: "Preview planner",
-            why_shown: "Weekend planner enabled",
-            payload: { section: "week" }
+            source_label: "Hermes memory",
+            why_shown: "Auto-discovered from Hermes memory and session history.",
+            payload: { section: "now", auto_discovered: true, context_item_id: "context-weather-local" }
+          },
+          {
+            id: "auto-context-projects-github",
+            context_id: "context-projects-github",
+            domain: "projects",
+            title: "GitHub issue work",
+            summary: "Hermes session history points to recurring project and GitHub issue follow-up.",
+            priority: "low",
+            status: "active",
+            pinned: false,
+            updated_at: now,
+            source_label: "Hermes sessions",
+            why_shown: "Auto-discovered from Hermes memory and session history.",
+            payload: { section: "watching", auto_discovered: true, context_item_id: "context-projects-github" }
           }
         ],
-        topics: [
-          { id: "news-daily-news-briefing", domain: "news", label: "Daily news briefing", query: "Top important news.", enabled: true, priority: "medium", cadence: "daily" },
-          { id: "weather-local-weather", domain: "weather", label: "Local weather", query: "Forecast and alerts.", enabled: true, priority: "medium", cadence: "daily" }
+        context_items: [
+          {
+            id: "context-news-ai",
+            domain: "news",
+            label: "AI news briefing",
+            summary: "Hermes has this in its memory history: User wants AI news in the morning.",
+            source_types: ["memory", "session"],
+            confidence: 0.82,
+            score: 2.3
+          },
+          {
+            id: "context-weather-local",
+            domain: "weather",
+            label: "Local weather and weekend planning",
+            summary: "Hermes has this in its memory history: User asks for weather and weekend plans.",
+            source_types: ["memory"],
+            confidence: 0.72,
+            score: 1.4
+          },
+          {
+            id: "context-projects-github",
+            domain: "projects",
+            label: "GitHub issue work",
+            summary: "Hermes has this in its session history: user asks about GitHub issues and project status.",
+            source_types: ["session"],
+            confidence: 0.68,
+            score: 1.1
+          }
         ],
         preferences: {
-          setup_completed: true,
-          briefing_time: "07:30",
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          location: "Preview City",
-          alert_frequency: "hourly",
-          weekend_planner: true,
-          calendar_enabled: false,
+          autonomous_mode: true,
+          last_auto_refresh_at: now,
           cron_jobs: {}
         },
         refresh_runs: [
-          { id: 1, job_key: "morning-briefing", status: "success", summary: "Updated preview cards.", started_at: now }
-        ],
-        suggestions: [
           {
-            id: "preview-suggestion",
-            kind: "topic",
-            title: "Track a favorite team",
-            summary: "Suggested example: add a sports topic for fixtures and results.",
-            status: "pending",
-            payload: { topic: { domain: "sports", label: "Favorite team", query: "Next games and results." } }
+            id: 1,
+            job_key: "hermes-context-reflection",
+            status: "success",
+            summary: "Scanned mocked Hermes memory and sessions, inferred 3 context items, updated 3 cards.",
+            started_at: now
           }
-        ]
+        ],
+        automation: {
+          refreshed: true,
+          sources: 4,
+          context_count: 3,
+          card_count: 3,
+          mode: "autonomous"
+        }
       };
 
       function clone(value) {
@@ -145,17 +172,18 @@
       function snapshot() {
         return clone({
           cards: state.cards.filter(function (card) { return card.status !== "dismissed" && card.status !== "expired"; }),
-          topics: state.topics,
+          context_items: state.context_items.filter(function (item) { return item.status !== "hidden"; }),
           preferences: state.preferences,
           refresh_runs: state.refresh_runs,
-          suggestions: state.suggestions.filter(function (item) { return item.status === "pending"; }),
-          setup: {
-            configured: Boolean(state.preferences.setup_completed),
-            topic_count: state.topics.length,
+          status: {
+            mode: "autonomous",
+            requires_configuration: false,
+            context_count: state.context_items.filter(function (item) { return item.status !== "hidden"; }).length,
             card_count: state.cards.length,
             preferences: state.preferences,
             db_path: "preview/cards.db"
-          }
+          },
+          automation: state.automation
         });
       }
 
@@ -166,47 +194,53 @@
         }));
       }
 
-      function addStarterTopics() {
-        var starters = [
-          ["calendar", "Today and tomorrow"],
-          ["stocks", "Market watchlist"],
-          ["sports", "Favorite teams"],
-          ["planning", "Weekend planner"]
-        ];
-        starters.forEach(function (item) {
-          var id = item[0] + "-" + item[1].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-          if (!state.topics.some(function (topic) { return topic.id === id; })) {
-            state.topics.push({ id: id, domain: item[0], label: item[1], query: "Preview starter topic.", enabled: true, priority: "medium", cadence: "daily" });
-          }
+      function addScanResult() {
+        var scanId = "context-family-school";
+        if (!state.context_items.some(function (item) { return item.id === scanId; })) {
+          state.context_items.push({
+            id: scanId,
+            domain: "family",
+            label: "Daycare lunch and daily summary",
+            summary: "Hermes has this in its session history: user receives daycare lunch menus and daily notes.",
+            source_types: ["session"],
+            confidence: 0.73,
+            score: 1.6
+          });
+          state.cards.push({
+            id: "auto-" + scanId,
+            context_id: scanId,
+            domain: "family",
+            title: "Daycare lunch and daily summary",
+            summary: "Hermes inferred this family/school item from session history and will keep it in Today.",
+            priority: "medium",
+            status: "active",
+            pinned: false,
+            updated_at: new Date().toISOString(),
+            source_label: "Hermes sessions",
+            why_shown: "Auto-discovered from Hermes memory and session history.",
+            payload: { section: "today", auto_discovered: true, context_item_id: scanId }
+          });
+        }
+        state.automation = {
+          refreshed: true,
+          sources: 5,
+          context_count: state.context_items.length,
+          card_count: state.cards.length,
+          mode: "autonomous"
+        };
+        state.refresh_runs.unshift({
+          id: state.refresh_runs.length + 1,
+          job_key: "hermes-context-reflection",
+          status: "success",
+          summary: "Preview scan found one additional session-derived context item.",
+          started_at: new Date().toISOString()
         });
-        return { count: 6, topics: state.topics };
-      }
-
-      function addSampleCards() {
-        var samples = [
-          ["sample-now-weather", "weather", "Sample weather alert", "Hermes will replace this with your configured location forecast.", "now"],
-          ["sample-today-briefing", "news", "Sample daily briefing", "Hermes will replace this with configured topic updates.", "today"],
-          ["sample-weekend-plans", "planning", "Sample weekend planner", "Hermes will replace this with weather-aware plans.", "week"],
-          ["sample-watchlist", "stocks", "Sample watchlist", "Hermes will replace this with configured watches.", "watching"]
-        ];
-        samples.forEach(function (item) {
-          if (!state.cards.some(function (card) { return card.id === item[0]; })) {
-            state.cards.push({
-              id: item[0],
-              domain: item[1],
-              title: item[2],
-              summary: item[3],
-              priority: "medium",
-              status: "active",
-              pinned: false,
-              updated_at: new Date().toISOString(),
-              source_label: "Sample data",
-              why_shown: "Preview mode",
-              payload: { section: item[4], sample: true }
-            });
-          }
-        });
-        return { count: 4, cards: state.cards };
+        return {
+          sources: 5,
+          context_items: state.context_items,
+          cards: state.cards,
+          mode: "autonomous"
+        };
       }
 
       var realFetch = window.fetch.bind(window);
@@ -214,48 +248,22 @@
         var path = String(url).replace("/api/plugins/hermes-personal-dashboard", "");
         options = options || {};
 
-        if (path === "/snapshot") return jsonResponse(snapshot());
-        if (path === "/setup/starter-topics") return jsonResponse(addStarterTopics());
-        if (path === "/setup/sample-cards") return jsonResponse(addSampleCards());
-        if (path === "/setup/create-cron-jobs") {
+        if (path.indexOf("/snapshot") === 0) return jsonResponse(snapshot());
+        if (path === "/context") return jsonResponse({ context_items: snapshot().context_items });
+        if (path === "/context/refresh") return jsonResponse(addScanResult());
+        if (path === "/automation/ensure-jobs") {
           state.preferences.cron_jobs = { morning: "preview-morning", alerts: "preview-alerts", weekend: "preview-weekend" };
           return jsonResponse({ created: [{ id: "preview-morning" }, { id: "preview-alerts" }, { id: "preview-weekend" }], existing: {}, skipped: false });
         }
-        if (path === "/setup/save") {
-          var setupBody = JSON.parse(options.body || "{}");
-          Object.assign(state.preferences, setupBody, { setup_completed: true });
-          return jsonResponse(snapshot().setup);
-        }
-        if (path === "/topics" && options.method === "POST") {
-          var topic = JSON.parse(options.body || "{}");
-          topic.id = topic.id || (topic.domain + "-" + topic.label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-          topic.enabled = topic.enabled !== false;
-          state.topics = state.topics.filter(function (item) { return item.id !== topic.id; }).concat([topic]);
-          return jsonResponse({ topic: topic });
-        }
-        if (path.indexOf("/topics/") === 0 && options.method === "DELETE") {
-          var topicId = decodeURIComponent(path.split("/").pop());
-          state.topics = state.topics.filter(function (topic) { return topic.id !== topicId; });
-          return jsonResponse({ deleted: 1, id: topicId });
-        }
-        if (path === "/suggestions/discover") {
-          return jsonResponse({ created: [], count: 0 });
-        }
-        if (path.indexOf("/suggestions/") === 0 && path.endsWith("/accept")) {
-          var acceptId = decodeURIComponent(path.split("/")[2]);
-          state.suggestions = state.suggestions.map(function (item) {
-            if (item.id !== acceptId) return item;
-            if (item.payload && item.payload.topic) state.topics.push(Object.assign({ id: "accepted-topic", enabled: true }, item.payload.topic));
-            return Object.assign({}, item, { status: "accepted" });
+        if (path.indexOf("/context/") === 0 && path.endsWith("/hide")) {
+          var contextId = decodeURIComponent(path.split("/")[2]);
+          state.context_items = state.context_items.map(function (item) {
+            return item.id === contextId ? Object.assign({}, item, { status: "hidden" }) : item;
           });
-          return jsonResponse({ suggestion: { id: acceptId, status: "accepted" } });
-        }
-        if (path.indexOf("/suggestions/") === 0 && path.endsWith("/dismiss")) {
-          var dismissSuggestionId = decodeURIComponent(path.split("/")[2]);
-          state.suggestions = state.suggestions.map(function (item) {
-            return item.id === dismissSuggestionId ? Object.assign({}, item, { status: "dismissed" }) : item;
+          state.cards = state.cards.map(function (card) {
+            return card.context_id === contextId ? Object.assign({}, card, { status: "dismissed" }) : card;
           });
-          return jsonResponse({ suggestion: { id: dismissSuggestionId, status: "dismissed" } });
+          return jsonResponse({ context_item: state.context_items.find(function (item) { return item.id === contextId; }) });
         }
         if (path.indexOf("/cards/") === 0) {
           var parts = path.split("/");

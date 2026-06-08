@@ -86,7 +86,7 @@ class Ctx:
 
 ctx = Ctx()
 mod.register(ctx)
-expected = 16
+expected = 13
 if len(ctx.tools) != expected:
     raise SystemExit(f"expected {expected} tools, found {len(ctx.tools)}")
 if "personal-dashboard" not in ctx.commands:
@@ -118,4 +118,4 @@ echo "Next useful commands:"
 echo "  ./scripts/install-local.sh"
 echo "  hermes plugins enable ${PLUGIN_NAME}"
 echo "  hermes dashboard"
-echo "  /personal-dashboard quickstart"
+echo "  /personal-dashboard status"
