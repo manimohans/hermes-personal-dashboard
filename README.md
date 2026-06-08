@@ -46,6 +46,22 @@ hermes plugins enable hermes-personal-dashboard
 hermes dashboard
 ```
 
+Preview the dashboard before installing Hermes:
+
+```bash
+python3 -m http.server 8765
+```
+
+Open:
+
+```text
+http://127.0.0.1:8765/docs/preview.html
+```
+
+The preview loads the real dashboard bundle with mocked API data so you can
+click through setup, starter topics, sample cards, pinning, dismissing, and
+suggestions.
+
 ## What It Does
 
 Hermes Personal Dashboard turns recurring Hermes work into a durable dashboard.
@@ -313,6 +329,8 @@ Useful routes:
 |   |-- manifest.json
 |   |-- plugin_api.py
 |   `-- dist/
+|-- docs/
+|   `-- preview.html
 |-- skills/
 |   `-- briefing-curator/
 |-- scripts/
@@ -327,6 +345,8 @@ Important files:
 - `personal_dashboard_core.py` owns SQLite storage and validation.
 - `dashboard/plugin_api.py` exposes FastAPI routes for the dashboard.
 - `dashboard/dist/index.js` is the prebuilt dashboard UI.
+- `docs/preview.html` previews the real dashboard bundle with mocked Hermes
+  API data.
 - `scripts/doctor.sh` checks layout, Python, JavaScript, plugin registration,
   Hermes availability, and local install state.
 - `skills/briefing-curator/SKILL.md` is the job/agent operating guide.
