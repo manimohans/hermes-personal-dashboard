@@ -91,6 +91,8 @@ def cron_prompt(kind: str) -> str:
         "a path/cadence is configured, or a topic is on a watchlist without fresh data. The card title, "
         "summary, and payload must show the actual user-facing data; use payload.metrics, payload.items, "
         "or payload.sections for readings, feed items, events, emails, menus, fixtures, or other user data."
+        " Reuse stable card IDs for the same user-facing topic so repeated runs update existing cards "
+        "instead of duplicating them."
     )
     if kind == "morning":
         return f"{base} Produce the autonomous daily dashboard refresh."

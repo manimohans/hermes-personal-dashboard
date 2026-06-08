@@ -253,6 +253,77 @@
       payload.current_temp_f !== undefined;
   }
 
+  function normalizeKey(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function hasTemperatureSignal(card) {
+    var payload = card.payload || {};
+    var text = [
+      card.title || "",
+      card.summary || "",
+      card.domain || ""
+    ].join(" ").toLowerCase();
+    return text.indexOf("thermal") >= 0 ||
+      text.indexOf("machine temperature") >= 0 ||
+      payload.thermal_zone0_c !== undefined ||
+      payload.temperature_c !== undefined ||
+      payload.current_temp_c !== undefined ||
+      hasArrayData(payload.readings);
+  }
+
+  function topicClusterKey(card) {
+    var payload = card.payload || {};
+    var domain = String(card.domain || "").toLowerCase();
+    if (domain === "weather") {
+      return "weather:" + (normalizeKey(payload.location) || "current");
+    }
+    if ((domain === "alerts" || domain === "sensors" || domain === "sensor") && hasTemperatureSignal(card)) {
+      return "sensor:machine-temperature";
+    }
+    return "";
+  }
+
+  function cardUpdatedMs(card) {
+    var value = Date.parse(card.updated_at || card.last_seen_at || "");
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function cardScore(card) {
+    var value = Number(card.relevance_score);
+    if (!Number.isFinite(value)) value = Number((card.payload || {}).relevance_score || 0);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function betterCard(candidate, existing) {
+    var candidatePinned = Boolean(candidate.pinned) || candidate.status === "pinned";
+    var existingPinned = Boolean(existing.pinned) || existing.status === "pinned";
+    if (candidatePinned !== existingPinned) return candidatePinned;
+    var candidateTime = cardUpdatedMs(candidate);
+    var existingTime = cardUpdatedMs(existing);
+    if (Math.abs(candidateTime - existingTime) > 2 * 60 * 1000) return candidateTime > existingTime;
+    var candidateHasData = hasDisplayablePayloadData(candidate);
+    var existingHasData = hasDisplayablePayloadData(existing);
+    if (candidateHasData !== existingHasData) return candidateHasData;
+    return cardScore(candidate) > cardScore(existing);
+  }
+
+  function dedupeTopicCards(cards) {
+    var chosen = {};
+    cards.forEach(function (card) {
+      var key = topicClusterKey(card);
+      if (!key) return;
+      if (!chosen[key] || betterCard(card, chosen[key])) chosen[key] = card;
+    });
+    return cards.filter(function (card) {
+      var key = topicClusterKey(card);
+      return !key || chosen[key] === card;
+    });
+  }
+
   function isInternalContextCard(card) {
     var payload = card.payload || {};
     if (payload.keep_visible) return false;
@@ -299,9 +370,10 @@
   }
 
   function visibleCards(cards) {
-    return (cards || []).filter(function (card) {
+    var filtered = (cards || []).filter(function (card) {
       return !isScannerCard(card) && !isInternalContextCard(card);
     });
+    return dedupeTopicCards(filtered);
   }
 
   function cronJobCount(preferences) {
@@ -518,6 +590,10 @@
       metrics.push(dataMetric("Machine Temp", payload.thermal_zone0_c, "C"));
       metrics.push(dataMetric("Current Temp", payload.current_temp_c, "C"));
       metrics.push(dataMetric("Current Temp", payload.current_temp_f, "F"));
+      metrics.push(dataMetric("Temperature", payload.temperature_f, "F"));
+      metrics.push(dataMetric("Temperature", payload.temperature_c, "C"));
+      metrics.push(dataMetric("Rain chance", payload.rain_probability_max_today, "%"));
+      metrics.push(dataMetric("UV index", payload.uv_index_max_today));
       metrics.push(dataMetric("Unread", payload.unread_count));
       metrics.push(dataMetric("Events", payload.calendar_events_seen));
     }

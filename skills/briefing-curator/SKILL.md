@@ -25,6 +25,10 @@ cards.
 - Treat inferred context as the user's already-provided intent. Use it to decide
   which live data is worth fetching with available Hermes tools.
 - Write useful visible cards with `personal_dashboard_upsert_card`.
+- Reuse one stable card `id` per user-facing topic. A repeated refresh should
+  update `weather-home-now`, `machine-temperature-now`, `calendar-today`,
+  `news-ai-briefing`, or an equivalent stable ID instead of creating a new
+  card with a timestamp, run name, or alternate wording.
 - Never turn raw scanner lines, prompts, cron schedules, persona text, or
   memory-write JSON into visible cards.
 - Do not create visible cards merely saying a source is authenticated, a token
@@ -104,6 +108,11 @@ For example:
 - Bad: "Weather job ran successfully."
 - Good: "Daycare: pasta lunch, nap note, art activity" with menu/daycare items.
 - Bad: "Daycare poll is active."
+
+When two old cards already describe the same live topic, update the newest or
+most useful one and dismiss, expire, or stop refreshing the duplicate. Do not
+keep separate cards for "San Jose weather now" and "San Jose weather today" if
+they are both answering the same current-weather question.
 
 ## Card Writing Pattern
 
