@@ -471,9 +471,14 @@
       "should stay on the dashboard watchlist",
       "watched alerts quiet",
       "watchdog paused",
+      "machine temperature watchdog",
+      "dashboard curator",
+      "curator running",
       "cron jobs are disabled",
       "quality monitoring",
-      "current cron environment"
+      "current cron environment",
+      "briefing blocked",
+      "briefing is blocked"
     ];
     for (var i = 0; i < internalPatterns.length; i += 1) {
       if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
@@ -1158,14 +1163,13 @@
 	  );
 	}
 
-	function mainSections(grouped, curation, onOpenDetails, rankedCards) {
-	  var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
-	  if (!total) return emptyMain(curation, onOpenDetails);
-	  return el("div", { className: "hpd-sections" },
-      overview(rankedCards || grouped.now.concat(grouped.today, grouped.week, grouped.watching)),
-      grouped.now.length ? cardSection("Now", grouped.now, "") : null,
-      grouped.today.length ? cardSection("Today", grouped.today, "") : null,
-      grouped.week.length ? cardSection("This Week", grouped.week, "") : null,
+		function mainSections(grouped, curation, onOpenDetails, rankedCards) {
+		  var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
+		  if (!total) return emptyMain(curation, onOpenDetails);
+		  return el("div", { className: "hpd-sections" },
+	      grouped.now.length ? cardSection("Now", grouped.now, "") : null,
+	      grouped.today.length ? cardSection("Today", grouped.today, "") : null,
+	      grouped.week.length ? cardSection("This Week", grouped.week, "") : null,
       grouped.watching.length ? cardSection("On Radar", grouped.watching, "") : null
     );
   }

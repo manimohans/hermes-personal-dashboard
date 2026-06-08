@@ -437,9 +437,14 @@
       "should stay on the dashboard watchlist",
       "watched alerts quiet",
       "watchdog paused",
+      "machine temperature watchdog",
+      "dashboard curator",
+      "curator running",
       "cron jobs are disabled",
       "quality monitoring",
-      "current cron environment"
+      "current cron environment",
+      "briefing blocked",
+      "briefing is blocked"
     ];
     for (let i = 0; i < internalPatterns.length; i += 1) {
       if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
@@ -1055,9 +1060,7 @@
     const grouped = props.grouped;
     const total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
     if (!total) return h(EmptyMain, { curation: props.curation, onOpenDetails: props.onOpenDetails });
-    const allCards = props.cards || grouped.now.concat(grouped.today, grouped.week, grouped.watching);
     return h("div", { className: "hpd-sections" },
-      h(Overview, { cards: allCards }),
       grouped.now.length ? h(CardSection, Object.assign({
         title: "Now",
         cards: grouped.now,
