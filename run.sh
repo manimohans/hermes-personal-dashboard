@@ -494,24 +494,71 @@ print_ready() {
 
 Hermes Personal Dashboard is ready.
 
-Open:
-  ${url}
+WHAT TO DO NEXT
+
+1. Open the standalone dashboard.
+   Use this exact URL. Do not guess the port.
+
+     ${url}
 EOF
   if [ "${url}" != "${loopback_url}" ]; then
     cat <<EOF
-  ${loopback_url}
+
+   If you are on this same machine, this also works:
+
+     ${loopback_url}
+EOF
+  fi
+
+  if [ "${OPEN_BROWSER}" -eq 1 ]; then
+    cat <<'EOF'
+
+   A browser should open automatically. If it does not, copy the URL above
+   into your browser.
+EOF
+  fi
+
+  if ! is_loopback_host "${HOST}"; then
+    cat <<'EOF'
+
+   From a phone, laptop, or tablet, use the first URL above while connected
+   to the same Wi-Fi or LAN.
 EOF
   fi
 
   cat <<EOF
 
-Install:
+2. When the page opens, look at the top status area.
+   - If cards are already shown, you are done.
+   - If it says signals were found but cards are not curated yet, continue.
+
+3. Click "Install auto updates" in the dashboard.
+   That asks Hermes to create the scheduled curator jobs that keep cards fresh.
+
+4. If the button says Hermes cron is unavailable, open Hermes chat and paste:
+
+     /personal-dashboard create-jobs
+
+   To choose a different schedule, paste this instead and edit the values:
+
+     /personal-dashboard create-jobs daily=09:00 frequent=30m planning=mon@16:00 force
+
+5. If you want Hermes to make cards right now, open Hermes chat and paste:
+
+     Use hermes-personal-dashboard:briefing-curator. Refresh the Personal Dashboard now from existing Hermes memory, sessions, cron output, and prior work. Write useful cards and record the refresh result.
+
+6. Go back to the dashboard URL and click "Refresh".
+   The dashboard should now show useful cards, not setup forms.
+
+KEEP THIS INFO
+
+Installed at:
   ${APP_TARGET}
 
-Log:
+Log file:
   ${LOG_FILE}
 
-Stop:
+To stop the server:
 EOF
   if [ "${FOREGROUND}" -eq 1 ]; then
     cat <<'EOF'
@@ -525,9 +572,49 @@ EOF
 
   cat <<'EOF'
 
-Clean reinstall:
-  ./run.sh --remove-existing --yes
+To start it again later:
 EOF
+  if [ "${HOST}" = "0.0.0.0" ] || [ "${HOST}" = "::" ]; then
+    cat <<EOF
+  ${APP_TARGET}/run.sh --lan
+EOF
+  else
+    cat <<EOF
+  ${APP_TARGET}/run.sh --host ${HOST} --port ${PORT}
+EOF
+  fi
+
+  cat <<'EOF'
+
+To clean reinstall:
+EOF
+  if [ "${HOST}" = "0.0.0.0" ] || [ "${HOST}" = "::" ]; then
+    cat <<EOF
+  ${APP_TARGET}/run.sh --lan --remove-existing --yes
+EOF
+  else
+    cat <<EOF
+  ${APP_TARGET}/run.sh --remove-existing --yes
+EOF
+  fi
+
+  if [ "${WITH_PLUGIN}" -eq 0 ]; then
+    cat <<'EOF'
+
+Plugin note:
+  You used --no-plugin. Hermes chat commands and auto-update jobs will not work
+  until you install the plugin bundle. Re-run without --no-plugin.
+EOF
+  elif [ "${ENABLE_PLUGIN}" -eq 0 ]; then
+    cat <<EOF
+
+Plugin note:
+  You used --no-enable. If Hermes does not see the plugin, run:
+
+    hermes plugins enable ${APP_NAME}
+EOF
+  fi
+
   if ! is_loopback_host "${HOST}"; then
     cat <<'EOF'
 
@@ -535,6 +622,47 @@ Security:
   This is running in LAN/insecure mode. Do not expose this port to the public internet.
 EOF
   fi
+}
+
+print_no_start_ready() {
+  cat <<EOF
+
+Hermes Personal Dashboard is installed, but the server was not started because you used --no-start.
+
+WHAT TO DO NEXT
+
+1. Start the dashboard.
+EOF
+  if [ "${HOST}" = "0.0.0.0" ] || [ "${HOST}" = "::" ]; then
+    cat <<EOF
+
+     ${APP_TARGET}/run.sh --lan
+EOF
+  else
+    cat <<EOF
+
+     ${APP_TARGET}/run.sh --host ${HOST} --port ${PORT}
+EOF
+  fi
+
+  cat <<EOF
+
+2. Wait for the script to print "Hermes Personal Dashboard is ready."
+
+3. Open the exact URL it prints. Do not guess the port.
+
+4. In the dashboard, click "Install auto updates".
+
+5. If that button cannot create Hermes jobs, open Hermes chat and paste:
+
+     /personal-dashboard create-jobs
+
+Installed at:
+  ${APP_TARGET}
+
+Clean reinstall:
+  ${APP_TARGET}/run.sh --remove-existing --yes
+EOF
 }
 
 start_background() {
@@ -602,8 +730,7 @@ if [ "${RUN_DOCTOR}" -eq 1 ] && [ -x "${APP_TARGET}/scripts/doctor.sh" ]; then
 fi
 
 if [ "${START_SERVER}" -ne 1 ]; then
-  echo "Installed and build-checked ${APP_NAME} at ${APP_TARGET}"
-  echo "Run: ${LAUNCHER} --host ${HOST} --port ${PORT}"
+  print_no_start_ready
   exit 0
 fi
 

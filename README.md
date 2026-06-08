@@ -74,7 +74,25 @@ curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboar
 --host 0.0.0.0 --insecure --no-open
 ```
 
-Then open the printed URL. It will usually look like:
+When the script finishes, follow the printed steps exactly:
+
+1. Open the exact dashboard URL printed by the script. Do not guess the port.
+2. If cards are already shown, you are done.
+3. If the page says signals were found but cards are not curated yet, click
+   **Install auto updates**.
+4. If that button says Hermes cron is unavailable, open Hermes chat and run:
+
+```bash
+/personal-dashboard create-jobs
+```
+
+5. To force cards immediately, ask Hermes:
+
+```text
+Use hermes-personal-dashboard:briefing-curator. Refresh the Personal Dashboard now from existing Hermes memory, sessions, cron output, and prior work. Write useful cards and record the refresh result.
+```
+
+On a LAN install, the printed URL will usually look like:
 
 ```text
 http://<machine-ip>:9120
