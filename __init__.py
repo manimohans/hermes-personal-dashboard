@@ -227,11 +227,15 @@ def _handle_slash(raw_args: str) -> str:
         if sub == "status":
             snapshot = core.dashboard_snapshot()
             automation = snapshot.get("automation") or {}
+            source_report = snapshot.get("source_report") or {}
+            by_type = source_report.get("by_type") or {}
+            source_types = ", ".join(f"{key}={value}" for key, value in sorted(by_type.items())) or "none yet"
             return (
                 "Hermes Personal Dashboard\n"
                 "  mode: autonomous\n"
                 f"  cards: {len(snapshot['cards'])}\n"
                 f"  inferred context: {len(snapshot['context_items'])}\n"
+                f"  readable sources: {source_report.get('source_count', 0)} ({source_types})\n"
                 f"  refresh runs: {len(snapshot['refresh_runs'])}\n"
                 f"  last scan refreshed: {automation.get('refreshed')}\n"
                 f"  db: {core.db_path()}"
@@ -247,13 +251,21 @@ def _handle_slash(raw_args: str) -> str:
         if sub == "context":
             items = core.list_context_items(limit=12)
             if not items:
-                return "No inferred context items yet. Open the dashboard or run `/personal-dashboard refresh` after Hermes has memory or sessions."
+                snapshot = core.dashboard_snapshot(auto_refresh=False)
+                report = snapshot.get("source_report") or {}
+                return (
+                    "No inferred context items yet.\n"
+                    f"  readable sources: {report.get('source_count', 0)}\n"
+                    "Open the dashboard or run `/personal-dashboard refresh` after Hermes has memory or sessions."
+                )
             lines = ["Top inferred dashboard context:"]
             for item in items:
                 lines.append(f"  - {item['domain']}: {item['label']}")
             return "\n".join(lines)
         if sub in {"create-jobs", "jobs"}:
             result = _create_standard_cron_jobs(force=False)
+            if result.get("error"):
+                return f"Cron jobs were not created: {result['error']}"
             if result.get("skipped"):
                 return f"Cron jobs already exist: {result['existing']}"
             return f"Created {len(result.get('created') or [])} cron job(s)."

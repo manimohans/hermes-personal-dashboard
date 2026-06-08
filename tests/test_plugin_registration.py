@@ -121,6 +121,21 @@ class PluginRegistrationTest(unittest.TestCase):
         self.assertIn("sources scanned:", message)
         self.assertIn("cards updated:", message)
 
+    def test_slash_status_shows_source_coverage(self) -> None:
+        memory_dir = Path(self.tmp.name) / "memories"
+        memory_dir.mkdir(parents=True)
+        (memory_dir / "MEMORY.md").write_text(
+            "- User tracks AI news.\n",
+            encoding="utf-8",
+        )
+        message = self.ctx.commands["personal-dashboard"]["handler"]("status")
+        self.assertIn("readable sources:", message)
+        self.assertIn("memory=1", message)
+
+    def test_slash_create_jobs_reports_missing_cron_runtime(self) -> None:
+        message = self.ctx.commands["personal-dashboard"]["handler"]("create-jobs")
+        self.assertIn("Cron jobs were not created:", message)
+
 
 if __name__ == "__main__":
     unittest.main()

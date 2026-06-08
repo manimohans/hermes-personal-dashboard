@@ -96,6 +96,30 @@ if "briefing-curator" not in ctx.skills:
 print("OK   plugin registers tools, slash command, and skill")
 PY
 
+python3 - <<'PY'
+import personal_dashboard_core as core
+
+sources = core.collect_hermes_sources(include_sessions=True, include_cron=True)
+report = core.build_source_report(sources)
+by_type = report.get("by_type") or {}
+checks = report.get("checks") or {}
+
+print(f"OK   source scan ready ({report.get('source_count', 0)} readable source(s))")
+if by_type:
+    print("     source types: " + ", ".join(f"{key}={value}" for key, value in sorted(by_type.items())))
+else:
+    print("     source types: none yet")
+
+memory_files = [item for item in checks.get("memory_files", []) if item.get("exists")]
+state_db = checks.get("state_db") or {}
+cron_jobs = checks.get("cron_jobs") or {}
+cron_output = checks.get("cron_output") or {}
+print(f"     memory files: {len(memory_files)}")
+print(f"     state.db: {'found' if state_db.get('exists') else 'not found'}")
+print(f"     cron jobs: {'found' if cron_jobs.get('exists') else 'not found'}")
+print(f"     cron output files: {cron_output.get('file_count', 0)}")
+PY
+
 if command -v hermes >/dev/null 2>&1; then
   ok "hermes command found"
 else
@@ -110,12 +134,12 @@ if [ -e "${TARGET}" ]; then
   fi
 else
   warn "plugin is not installed at ${TARGET}"
-  echo "     Run: ./scripts/install-local.sh"
+  echo "     Run: ./install.sh"
 fi
 
 echo
 echo "Next useful commands:"
-echo "  ./scripts/install-local.sh"
+echo "  ./install.sh"
 echo "  hermes plugins enable ${PLUGIN_NAME}"
 echo "  hermes dashboard"
 echo "  /personal-dashboard status"

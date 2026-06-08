@@ -207,7 +207,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS cards (
             id TEXT PRIMARY KEY,
-            topic_id TEXT,
+            context_id TEXT,
             domain TEXT NOT NULL,
             title TEXT NOT NULL,
             summary TEXT NOT NULL,
@@ -286,7 +286,26 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_context_items_score ON context_items(score);
         """
     )
+    _migrate_db(conn)
     conn.commit()
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({_quote_identifier(table)})").fetchall()}
+    except sqlite3.Error:
+        return set()
+
+
+def _migrate_db(conn: sqlite3.Connection) -> None:
+    card_columns = _table_columns(conn, "cards")
+    if card_columns and "context_id" not in card_columns:
+        conn.execute("ALTER TABLE cards ADD COLUMN context_id TEXT")
+        card_columns.add("context_id")
+    if "context_id" in card_columns and "topic_id" in card_columns:
+        conn.execute(
+            "UPDATE cards SET context_id = topic_id WHERE context_id IS NULL AND topic_id IS NOT NULL"
+        )
 
 
 def _json_dumps(value: Any) -> Optional[str]:
@@ -336,10 +355,6 @@ def normalize_status(value: Any, allowed: Iterable[str], default: str) -> str:
 def validate_card_payload(data: Dict[str, Any], partial: bool = False) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DashboardError("payload must be an object")
-    if "context_id" in data and "topic_id" not in data:
-        data = dict(data)
-        data["topic_id"] = data.get("context_id")
-
     required = [] if partial else ["id", "domain", "title", "summary"]
     for key in required:
         if not str(data.get(key) or "").strip():
@@ -348,7 +363,7 @@ def validate_card_payload(data: Dict[str, Any], partial: bool = False) -> Dict[s
     out: Dict[str, Any] = {}
     string_fields = [
         "id",
-        "topic_id",
+        "context_id",
         "domain",
         "title",
         "summary",
@@ -457,7 +472,7 @@ def upsert_card(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None)
 
         fields = [
             "id",
-            "topic_id",
+            "context_id",
             "domain",
             "title",
             "summary",
@@ -507,7 +522,7 @@ def patch_card(card_id: str, data: Dict[str, Any], conn: Optional[sqlite3.Connec
         if payload.get("status") == "pinned":
             payload["pinned"] = 1
         allowed_fields = {
-            "topic_id",
+            "context_id",
             "domain",
             "title",
             "summary",
@@ -946,6 +961,81 @@ def collect_hermes_sources(include_sessions: bool = True, include_cron: bool = T
     return sources
 
 
+def _limited_file_count(path: Path, suffixes: set[str], limit: int = 1000) -> int:
+    if not path.exists():
+        return 0
+    count = 0
+    for item in path.rglob("*"):
+        if item.is_file() and item.suffix.lower() in suffixes:
+            count += 1
+            if count >= limit:
+                return count
+    return count
+
+
+def build_source_report(
+    sources: Sequence[Dict[str, Any]],
+    include_sessions: bool = True,
+    include_cron: bool = True,
+) -> Dict[str, Any]:
+    by_type: Dict[str, int] = {}
+    labels_by_type: Dict[str, List[str]] = {}
+    for source in sources:
+        source_type = str(source.get("source_type") or "unknown")
+        by_type[source_type] = by_type.get(source_type, 0) + 1
+        label = str(source.get("source_label") or source.get("path") or source_type)
+        labels = labels_by_type.setdefault(source_type, [])
+        if label not in labels and len(labels) < 8:
+            labels.append(label)
+
+    home = hermes_home()
+    memory_paths = []
+    seen: set[str] = set()
+    for path in _memory_file_paths():
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        memory_paths.append(
+            {
+                "label": path.name,
+                "path": str(path),
+                "exists": path.exists(),
+                "bytes": path.stat().st_size if path.exists() and path.is_file() else 0,
+            }
+        )
+
+    state_db = home / "state.db"
+    cron_jobs = home / "cron" / "jobs.json"
+    cron_output = home / "cron" / "output"
+    return {
+        "source_count": len(sources),
+        "by_type": by_type,
+        "labels_by_type": labels_by_type,
+        "checks": {
+            "memory_files": memory_paths,
+            "state_db": {
+                "path": str(state_db),
+                "exists": state_db.exists(),
+                "bytes": state_db.stat().st_size if state_db.exists() and state_db.is_file() else 0,
+                "scanned": include_sessions,
+            },
+            "cron_jobs": {
+                "path": str(cron_jobs),
+                "exists": cron_jobs.exists(),
+                "bytes": cron_jobs.stat().st_size if cron_jobs.exists() and cron_jobs.is_file() else 0,
+                "scanned": include_cron,
+            },
+            "cron_output": {
+                "path": str(cron_output),
+                "exists": cron_output.exists(),
+                "file_count": _limited_file_count(cron_output, {".md", ".txt", ".json", ".log"}) if include_cron else 0,
+                "scanned": include_cron,
+            },
+        },
+    }
+
+
 def _candidate_snippets(source: Dict[str, Any], per_source_limit: int = 80) -> List[str]:
     text = str(source.get("text") or "")
     lines = []
@@ -1208,6 +1298,86 @@ def _detail_for_context(item: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _source_report_detail(report: Dict[str, Any]) -> str:
+    lines = []
+    by_type = report.get("by_type") or {}
+    if by_type:
+        lines.append("Readable Hermes sources:")
+        for source_type, count in sorted(by_type.items()):
+            labels = ", ".join((report.get("labels_by_type") or {}).get(source_type, [])[:4])
+            suffix = f" ({labels})" if labels else ""
+            lines.append(f"- {source_type}: {count}{suffix}")
+    else:
+        lines.append("No readable Hermes memory, session, or cron sources were found yet.")
+
+    checks = report.get("checks") or {}
+    state_db = checks.get("state_db") or {}
+    cron_jobs = checks.get("cron_jobs") or {}
+    cron_output = checks.get("cron_output") or {}
+    lines.append("")
+    lines.append("Source checks:")
+    memory_files = checks.get("memory_files") or []
+    existing_memory = [item for item in memory_files if item.get("exists")]
+    lines.append(f"- memory files: {len(existing_memory)} found")
+    lines.append(f"- state.db: {'found' if state_db.get('exists') else 'not found'}")
+    lines.append(f"- cron jobs: {'found' if cron_jobs.get('exists') else 'not found'}")
+    lines.append(f"- cron output files: {cron_output.get('file_count', 0)}")
+    return "\n".join(lines)
+
+
+def upsert_reflection_card(
+    source_report: Dict[str, Any],
+    context_count: int,
+    generated_count: int,
+    conn: Optional[sqlite3.Connection] = None,
+) -> Optional[Dict[str, Any]]:
+    existing = get_card("system-hermes-context-map", conn)
+    if existing and existing.get("status") == "dismissed":
+        return None
+
+    source_count = int(source_report.get("source_count") or 0)
+    if source_count == 0:
+        title = "Hermes dashboard is ready"
+        summary = (
+            "The plugin installed correctly and looked for Hermes memory, session history, "
+            "cron jobs, and cron output. No saved Hermes context was readable yet, so the "
+            "dashboard will fill in automatically as Hermes builds memory or runs jobs."
+        )
+    elif context_count == 0:
+        title = "Hermes context scan completed"
+        summary = (
+            f"Scanned {source_count} Hermes source(s), but did not find recurring, "
+            "dashboard-worthy context yet. The dashboard will keep watching as new Hermes "
+            "sessions, memory, or cron output appear."
+        )
+    else:
+        title = f"Hermes found {context_count} useful signal(s)"
+        summary = (
+            f"Scanned {source_count} Hermes source(s), inferred {context_count} useful "
+            f"context item(s), and updated {generated_count} dashboard card(s)."
+        )
+
+    return upsert_card(
+        {
+            "id": "system-hermes-context-map",
+            "domain": "system",
+            "title": title,
+            "summary": summary,
+            "detail_md": _source_report_detail(source_report),
+            "priority": "low",
+            "status": "active",
+            "source_label": "Hermes context scanner",
+            "why_shown": "Shows what the dashboard could read from Hermes.",
+            "payload": {
+                "section": "watching",
+                "system_card": True,
+                "auto_discovered": True,
+            },
+        },
+        conn,
+    )
+
+
 def sync_cards_from_context(items: Sequence[Dict[str, Any]], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     own = conn is None
     cx = conn or connect()
@@ -1224,7 +1394,7 @@ def sync_cards_from_context(items: Sequence[Dict[str, Any]], conn: Optional[sqli
             card = upsert_card(
                 {
                     "id": f"auto-{context_id}",
-                    "topic_id": context_id,
+                    "context_id": context_id,
                     "domain": domain,
                     "title": _card_title_for_context(item),
                     "summary": summary,
@@ -1260,28 +1430,35 @@ def refresh_from_hermes_context(
     started_at = utc_now()
     try:
         sources = collect_hermes_sources(include_sessions=include_sessions, include_cron=include_cron)
+        source_report = build_source_report(sources, include_sessions=include_sessions, include_cron=include_cron)
         items = infer_context_items(sources)
         saved_items = [upsert_context_item(item, cx) for item in items]
         card_result = sync_cards_from_context(saved_items, cx) if create_cards else {"cards": [], "count": 0}
-        put_preferences({"last_auto_refresh_at": utc_now(), "autonomous_mode": True}, cx)
+        reflection_card = upsert_reflection_card(source_report, len(saved_items), card_result["count"], cx) if create_cards else None
+        cards = list(card_result["cards"])
+        if reflection_card:
+            cards.append(reflection_card)
+        put_preferences({"last_auto_refresh_at": utc_now(), "autonomous_mode": True, "last_source_report": source_report}, cx)
         run = record_refresh(
             {
                 "job_key": "hermes-context-reflection",
                 "status": "success",
-                "summary": f"Scanned {len(sources)} Hermes source(s), inferred {len(saved_items)} context item(s), updated {card_result['count']} card(s).",
+                "summary": f"Scanned {len(sources)} Hermes source(s), inferred {len(saved_items)} context item(s), updated {len(cards)} card(s).",
                 "started_at": started_at,
                 "payload": {
                     "source_count": len(sources),
                     "context_count": len(saved_items),
-                    "card_count": card_result["count"],
+                    "card_count": len(cards),
+                    "source_report": source_report,
                 },
             },
             cx,
         )
         return {
             "sources": len(sources),
+            "source_report": source_report,
             "context_items": saved_items,
-            "cards": card_result["cards"],
+            "cards": cards,
             "refresh_run": run,
             "mode": "autonomous",
         }
@@ -1311,12 +1488,14 @@ def auto_refresh_if_needed(conn: sqlite3.Connection, max_age_seconds: int = 600)
             "refreshed": False,
             "reason": "recent",
             "last_auto_refresh_at": prefs.get("last_auto_refresh_at"),
+            "source_report": prefs.get("last_source_report"),
             "mode": "autonomous",
         }
     result = refresh_from_hermes_context(conn=conn)
     return {
         "refreshed": True,
         "sources": result["sources"],
+        "source_report": result.get("source_report"),
         "context_count": len(result["context_items"]),
         "card_count": len(result["cards"]),
         "mode": "autonomous",
@@ -1327,6 +1506,9 @@ def dashboard_snapshot(auto_refresh: bool = True) -> Dict[str, Any]:
     cx = connect()
     try:
         automation = auto_refresh_if_needed(cx) if auto_refresh else {"refreshed": False, "mode": "autonomous"}
+        source_report = automation.get("source_report")
+        if not source_report:
+            source_report = get_preferences(cx).get("last_source_report") or build_source_report(collect_hermes_sources())
         cards = list_cards(conn=cx)
         return {
             "cards": cards,
@@ -1335,6 +1517,7 @@ def dashboard_snapshot(auto_refresh: bool = True) -> Dict[str, Any]:
             "refresh_runs": list_refresh_runs(25, cx),
             "status": dashboard_status(cx),
             "automation": automation,
+            "source_report": source_report,
         }
     finally:
         cx.close()

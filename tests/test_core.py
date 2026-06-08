@@ -135,6 +135,23 @@ class CoreTest(unittest.TestCase):
         self.assertIn("stocks", domains)
         self.assertIn("planning", domains)
         self.assertTrue(all((card.get("payload") or {}).get("auto_discovered") for card in cards))
+        self.assertEqual(result["source_report"]["source_count"], 1)
+        self.assertIn("memory", result["source_report"]["by_type"])
+
+    def test_refresh_with_no_sources_creates_ready_card(self) -> None:
+        result = core.refresh_from_hermes_context(
+            include_sessions=False,
+            include_cron=False,
+            create_cards=True,
+            conn=self.conn,
+        )
+        self.assertEqual(result["sources"], 0)
+        self.assertEqual(len(result["context_items"]), 0)
+        cards = core.list_cards(conn=self.conn)
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["id"], "system-hermes-context-map")
+        self.assertIn("ready", cards[0]["title"].lower())
+        self.assertEqual(result["source_report"]["source_count"], 0)
 
     def test_hide_context_dismisses_generated_card(self) -> None:
         item = core.upsert_context_item(
@@ -161,6 +178,7 @@ class CoreTest(unittest.TestCase):
         snapshot = core.dashboard_snapshot(auto_refresh=True)
         self.assertFalse(snapshot["status"]["requires_configuration"])
         self.assertEqual(snapshot["status"]["mode"], "autonomous")
+        self.assertIn("source_report", snapshot)
         self.assertGreaterEqual(len(snapshot["context_items"]), 1)
         self.assertGreaterEqual(len(snapshot["cards"]), 1)
 

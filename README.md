@@ -50,28 +50,41 @@ Then it creates inferred context items and dashboard cards.
 
 ## Install
 
-Clone the repo into your Hermes plugins directory:
+One-command install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/install.sh | bash
+```
+
+Then open Hermes:
+
+```bash
+hermes dashboard
+```
+
+Open the **Personal Dashboard** tab. No configuration is required.
+
+Manual install:
 
 ```bash
 mkdir -p ~/.hermes/plugins
 git clone https://github.com/manimohans/hermes-personal-dashboard.git \
   ~/.hermes/plugins/hermes-personal-dashboard
+hermes plugins enable hermes-personal-dashboard
+hermes dashboard
 ```
 
 Or symlink this checkout while developing:
 
 ```bash
-./scripts/install-local.sh
+./install.sh
 ```
 
-Enable the plugin and open the dashboard:
+Check the install:
 
 ```bash
-hermes plugins enable hermes-personal-dashboard
-hermes dashboard
+./scripts/doctor.sh
 ```
-
-Open the **Personal Dashboard** tab. No setup step is required.
 
 ## Try It Before Installing Hermes
 
@@ -96,9 +109,10 @@ On first load, the dashboard asks the backend for `/snapshot`. The backend can
 auto-scan Hermes memory, session history, cron jobs, and cron output, then write
 cards into the local SQLite store.
 
-If Hermes has no memory or saved sessions yet, the dashboard stays empty and
-explains that it will fill in as Hermes works. It does not ask the user to fill
-out a form.
+If Hermes has no memory or saved sessions yet, the dashboard still shows a
+ready card and source coverage. It explains what it checked and then fills in
+automatically as Hermes builds memory or runs jobs. It does not ask the user to
+fill out a form.
 
 Useful command:
 
@@ -165,6 +179,7 @@ The dashboard includes correction controls, not setup controls:
 - **Pin / Unpin**: keep a card visible
 - **Dismiss**: hide a card
 - **Hide** on inferred context: stop showing that inferred item
+- **Source Coverage**: see which Hermes memory/session/cron sources were read
 
 ## Plugin Tools
 
@@ -248,6 +263,7 @@ available. In a minimal Python environment they are skipped.
 |-- personal_dashboard_core.py
 |-- schemas.py
 |-- plugin.yaml
+|-- install.sh
 |-- dashboard/
 |   |-- manifest.json
 |   |-- plugin_api.py

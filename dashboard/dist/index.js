@@ -182,6 +182,36 @@
     );
   }
 
+  function SourceCoverage(props) {
+    const report = props.report || {};
+    const checks = report.checks || {};
+    const byType = report.by_type || {};
+    const memoryFiles = (checks.memory_files || []).filter(function (item) { return item.exists; });
+    const rows = [
+      { label: "Memory files", value: String(memoryFiles.length), detail: memoryFiles.map(function (item) { return item.label; }).join(", ") || "No readable memory files yet" },
+      { label: "Session DB", value: checks.state_db && checks.state_db.exists ? "Found" : "Missing", detail: checks.state_db && checks.state_db.path },
+      { label: "Cron jobs", value: checks.cron_jobs && checks.cron_jobs.exists ? "Found" : "Missing", detail: checks.cron_jobs && checks.cron_jobs.path },
+      { label: "Cron output", value: String((checks.cron_output && checks.cron_output.file_count) || 0), detail: checks.cron_output && checks.cron_output.path },
+    ];
+    const typeLabels = Object.keys(byType).sort().map(function (key) { return key + ": " + byType[key]; });
+    return h("div", { className: "hpd-panel" },
+      h("h3", null, "Source Coverage"),
+      h("div", { className: "hpd-source-total" },
+        h("strong", null, String(report.source_count || 0)),
+        h("span", null, "readable Hermes source" + ((report.source_count || 0) === 1 ? "" : "s"))
+      ),
+      typeLabels.length ? h("p", { className: "hpd-source-types" }, typeLabels.join(" - ")) : null,
+      rows.map(function (row) {
+        return h("div", { key: row.label, className: "hpd-context" },
+          h("div", null,
+            h("strong", null, row.label + ": " + row.value),
+            row.detail ? h("p", null, row.detail) : null
+          )
+        );
+      })
+    );
+  }
+
   function Activity(props) {
     const runs = props.runs || [];
     return h("section", { className: "hpd-section hpd-activity" },
@@ -198,7 +228,8 @@
               )
             );
           }) : h("div", { className: "hpd-empty" }, "No refreshes yet.")
-        )
+        ),
+        h(SourceCoverage, { report: props.sourceReport || {} })
       )
     );
   }
@@ -306,6 +337,7 @@
         }),
         h(Activity, {
           runs: snapshot.refresh_runs || [],
+          sourceReport: snapshot.source_report || {},
         })
       ) : null
     );

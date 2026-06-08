@@ -71,6 +71,20 @@
       var state = {
         cards: [
           {
+            id: "system-hermes-context-map",
+            domain: "system",
+            title: "Hermes found 3 useful signals",
+            summary: "Scanned 4 mocked Hermes sources, inferred 3 useful context items, and updated 3 dashboard cards.",
+            detail_md: "Readable Hermes sources:\n- memory: 1 (MEMORY.md)\n- session: 2 (state.db:messages)\n- cron_job: 1 (cron/jobs.json)\n\nSource checks:\n- memory files: 1 found\n- state.db: found\n- cron jobs: found\n- cron output files: 0",
+            priority: "low",
+            status: "active",
+            pinned: false,
+            updated_at: now,
+            source_label: "Hermes context scanner",
+            why_shown: "Shows what the dashboard could read from Hermes.",
+            payload: { section: "watching", system_card: true, auto_discovered: true }
+          },
+          {
             id: "auto-context-news-ai",
             context_id: "context-news-ai",
             domain: "news",
@@ -147,6 +161,17 @@
           last_auto_refresh_at: now,
           cron_jobs: {}
         },
+        source_report: {
+          source_count: 4,
+          by_type: { memory: 1, session: 2, cron_job: 1 },
+          labels_by_type: { memory: ["MEMORY.md"], session: ["state.db:messages"], cron_job: ["cron/jobs.json"] },
+          checks: {
+            memory_files: [{ label: "MEMORY.md", path: "~/.hermes/memories/MEMORY.md", exists: true, bytes: 2048 }],
+            state_db: { path: "~/.hermes/state.db", exists: true, bytes: 123456, scanned: true },
+            cron_jobs: { path: "~/.hermes/cron/jobs.json", exists: true, bytes: 512, scanned: true },
+            cron_output: { path: "~/.hermes/cron/output", exists: true, file_count: 0, scanned: true }
+          }
+        },
         refresh_runs: [
           {
             id: 1,
@@ -175,6 +200,7 @@
           context_items: state.context_items.filter(function (item) { return item.status !== "hidden"; }),
           preferences: state.preferences,
           refresh_runs: state.refresh_runs,
+          source_report: state.source_report,
           status: {
             mode: "autonomous",
             requires_configuration: false,
@@ -228,6 +254,20 @@
           card_count: state.cards.length,
           mode: "autonomous"
         };
+        state.source_report = {
+          source_count: 5,
+          by_type: { memory: 1, session: 3, cron_job: 1 },
+          labels_by_type: { memory: ["MEMORY.md"], session: ["state.db:messages"], cron_job: ["cron/jobs.json"] },
+          checks: state.source_report.checks
+        };
+        state.cards = state.cards.map(function (card) {
+          if (card.id !== "system-hermes-context-map") return card;
+          return Object.assign({}, card, {
+            title: "Hermes found 4 useful signals",
+            summary: "Scanned 5 mocked Hermes sources, inferred 4 useful context items, and updated 4 dashboard cards.",
+            updated_at: new Date().toISOString()
+          });
+        });
         state.refresh_runs.unshift({
           id: state.refresh_runs.length + 1,
           job_key: "hermes-context-reflection",
