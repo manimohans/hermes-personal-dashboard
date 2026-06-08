@@ -200,6 +200,59 @@
     return summary.indexOf("hermes has this in its ") === 0;
   }
 
+  function hasArrayData(value) {
+    return Array.isArray(value) && value.length > 0;
+  }
+
+  function hasObjectData(value) {
+    return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
+  }
+
+  function hasSectionData(sections) {
+    return Array.isArray(sections) && sections.some(function (section) {
+      return section && typeof section === "object" && (
+        hasArrayData(section.items) || hasArrayData(section.rows) || hasArrayData(section.entries)
+      );
+    });
+  }
+
+  function hasListObjectData(lists) {
+    return hasObjectData(lists) && Object.keys(lists).some(function (key) {
+      return hasArrayData(lists[key]);
+    });
+  }
+
+  function hasDisplayablePayloadData(card) {
+    var payload = card.payload || {};
+    return hasArrayData(payload.metrics) ||
+      hasObjectData(payload.metrics) ||
+      hasArrayData(payload.readings) ||
+      hasObjectData(payload.observed) ||
+      hasObjectData(payload.current) ||
+      hasSectionData(payload.sections) ||
+      hasListObjectData(payload.lists) ||
+      hasArrayData(payload.items) ||
+      hasArrayData(payload.news_items) ||
+      hasArrayData(payload.headlines) ||
+      hasArrayData(payload.stories) ||
+      hasArrayData(payload.calendar_events) ||
+      hasArrayData(payload.events) ||
+      hasArrayData(payload.email_items) ||
+      hasArrayData(payload.emails) ||
+      hasArrayData(payload.daycare_items) ||
+      hasArrayData(payload.menu_items) ||
+      hasArrayData(payload.school_items) ||
+      hasArrayData(payload.fixtures) ||
+      hasArrayData(payload.games) ||
+      hasArrayData(payload.scores) ||
+      hasArrayData(payload.tickers) ||
+      hasArrayData(payload.positions) ||
+      hasArrayData(payload.alerts) ||
+      payload.thermal_zone0_c !== undefined ||
+      payload.current_temp_c !== undefined ||
+      payload.current_temp_f !== undefined;
+  }
+
   function isInternalContextCard(card) {
     var payload = card.payload || {};
     if (payload.keep_visible) return false;
@@ -225,6 +278,21 @@
     ];
     for (var i = 0; i < internalPatterns.length; i += 1) {
       if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
+    }
+    var operationalOnlyPatterns = [
+      "blocked by invisible unicode",
+      "prompt contains invisible unicode",
+      "job last errored",
+      "failed refresh",
+      "refresh failed",
+      "hermes cron/jobs",
+      "curator job",
+      "scheduled job"
+    ];
+    if (!hasDisplayablePayloadData(card) || payload.error) {
+      for (var j = 0; j < operationalOnlyPatterns.length; j += 1) {
+        if (primaryText.indexOf(operationalOnlyPatterns[j]) >= 0) return true;
+      }
     }
     if (detailText.indexOf("token path:") >= 0 || detailText.indexOf("oauth client path:") >= 0) return true;
     return false;
@@ -370,19 +438,25 @@
     return (title + "|" + String(anchor).toLowerCase()).trim();
   }
 
+  function listItemTitleKey(item) {
+    return itemTitle(item).toLowerCase().trim();
+  }
+
   function addListGroup(groups, label, items) {
     if (!Array.isArray(items) || !items.length) return;
     var keys = items.map(listItemKey).filter(Boolean);
+    var titles = items.map(listItemTitleKey).filter(Boolean);
     for (var i = 0; i < groups.length; i += 1) {
       var other = groups[i];
       var overlap = keys.filter(function (key) { return other.keys.indexOf(key) >= 0; }).length;
-      if (!overlap) continue;
+      var titleOverlap = titles.filter(function (title) { return other.titles.indexOf(title) >= 0; }).length;
+      if (!overlap && !titleOverlap) continue;
       if (items.length > other.items.length) {
-        groups[i] = { label: label, items: items, keys: keys };
+        groups[i] = { label: label, items: items, keys: keys, titles: titles };
       }
       return;
     }
-    groups.push({ label: label, items: items, keys: keys });
+    groups.push({ label: label, items: items, keys: keys, titles: titles });
   }
 
   function itemTitle(item) {
