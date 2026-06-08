@@ -41,6 +41,7 @@ For local development from a checkout:
 ```bash
 cd hermes-personal-dashboard
 ./scripts/install-local.sh
+./scripts/doctor.sh
 hermes plugins enable hermes-personal-dashboard
 hermes dashboard
 ```
@@ -185,14 +186,31 @@ Inside a Hermes session:
 
 ```text
 /personal-dashboard status
+/personal-dashboard quickstart
 /personal-dashboard starter-topics
 /personal-dashboard sample-cards
+/personal-dashboard create-jobs
 /personal-dashboard discover
 ```
 
 Use `starter-topics` to add the generic topic set from chat, `sample-cards` to
 preview the layout, and `discover` to create pending suggestions from Hermes
 memory.
+
+Fastest chat-first setup:
+
+```text
+/personal-dashboard quickstart
+```
+
+That adds starter topics and sample cards. Then open the dashboard, add your
+location/time, save setup, and create jobs.
+
+To check local installation health:
+
+```bash
+./scripts/doctor.sh
+```
 
 ## Tool Surface
 
@@ -201,6 +219,7 @@ The plugin registers the `personal_dashboard` toolset:
 | Tool | Purpose |
 | --- | --- |
 | `personal_dashboard_upsert_card` | Create or update a dashboard card. |
+| `personal_dashboard_patch_card` | Update selected fields on an existing card. |
 | `personal_dashboard_expire_card` | Mark a card expired. |
 | `personal_dashboard_add_evidence` | Attach source evidence to a card. |
 | `personal_dashboard_list_cards` | List cards for inspection or refresh logic. |
@@ -210,8 +229,11 @@ The plugin registers the `personal_dashboard` toolset:
 | `personal_dashboard_get_topics` | Read configured topics. |
 | `personal_dashboard_get_preferences` | Read dashboard setup preferences. |
 | `personal_dashboard_get_snapshot` | Read cards, topics, preferences, refreshes, suggestions, and setup state. |
+| `personal_dashboard_save_setup` | Save dashboard setup preferences and optional topics. |
 | `personal_dashboard_add_starter_topics` | Add generic starter topics. |
 | `personal_dashboard_create_sample_cards` | Create generic sample cards. |
+| `personal_dashboard_create_cron_jobs` | Create standard Hermes cron refresh jobs. |
+| `personal_dashboard_quickstart` | Save optional setup, add starter topics, create samples, and optionally create jobs. |
 
 Minimum card payload:
 
@@ -294,6 +316,7 @@ Useful routes:
 |-- skills/
 |   `-- briefing-curator/
 |-- scripts/
+|   |-- doctor.sh
 |   `-- install-local.sh
 `-- tests/
 ```
@@ -304,6 +327,8 @@ Important files:
 - `personal_dashboard_core.py` owns SQLite storage and validation.
 - `dashboard/plugin_api.py` exposes FastAPI routes for the dashboard.
 - `dashboard/dist/index.js` is the prebuilt dashboard UI.
+- `scripts/doctor.sh` checks layout, Python, JavaScript, plugin registration,
+  Hermes availability, and local install state.
 - `skills/briefing-curator/SKILL.md` is the job/agent operating guide.
 
 ## Development
@@ -311,6 +336,7 @@ Important files:
 Run checks from the repository root:
 
 ```bash
+./scripts/doctor.sh
 python3 -m py_compile __init__.py dashboard/plugin_api.py personal_dashboard_core.py schemas.py
 python3 -m unittest discover -s tests -v
 node --check dashboard/dist/index.js

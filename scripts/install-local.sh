@@ -22,6 +22,7 @@ echo "Installed ${PLUGIN_NAME} -> ${TARGET}"
 if command -v hermes >/dev/null 2>&1; then
   echo
   echo "Next steps:"
+  echo "  ./scripts/doctor.sh"
   echo "  hermes plugins enable ${PLUGIN_NAME}"
   echo "  hermes dashboard"
   echo

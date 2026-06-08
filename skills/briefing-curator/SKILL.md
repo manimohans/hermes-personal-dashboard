@@ -19,9 +19,17 @@ the user configured or explicitly accepted.
 
 - Read preferences with `personal_dashboard_get_preferences`.
 - Read configured topics with `personal_dashboard_get_topics`.
+- Use `personal_dashboard_quickstart` only when the user wants first-time
+  setup help.
+- Use `personal_dashboard_save_setup` when the user asks you to configure
+  briefing time, location, timezone, alert frequency, calendar preference, or
+  weekend planning from chat.
 - Fetch data with the best available Hermes tools and skills for each enabled
   topic. Do not invent provider access that is not configured.
 - Write results with `personal_dashboard_upsert_card`.
+- Adjust existing cards with `personal_dashboard_patch_card` rather than
+  rewriting the full card when only status, pinning, priority, or summary
+  changed.
 - Attach important source evidence with `personal_dashboard_add_evidence`.
 - Record the refresh outcome with `personal_dashboard_record_refresh`.
 - Create or update topics with `personal_dashboard_upsert_topic` only when the

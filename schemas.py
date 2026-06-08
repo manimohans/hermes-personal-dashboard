@@ -43,6 +43,16 @@ PERSONAL_DASHBOARD_UPSERT_CARD = {
     },
 }
 
+PERSONAL_DASHBOARD_PATCH_CARD = {
+    "name": "personal_dashboard_patch_card",
+    "description": "Update selected fields on an existing dashboard card, such as priority, status, pinned, summary, or valid_until.",
+    "parameters": {
+        "type": "object",
+        "properties": CARD_PROPERTIES,
+        "required": ["id"],
+    },
+}
+
 PERSONAL_DASHBOARD_EXPIRE_CARD = {
     "name": "personal_dashboard_expire_card",
     "description": "Mark a dashboard card as expired so it no longer appears in active views.",
@@ -156,6 +166,24 @@ PERSONAL_DASHBOARD_GET_SNAPSHOT = {
     "parameters": {"type": "object", "properties": {}},
 }
 
+PERSONAL_DASHBOARD_SAVE_SETUP = {
+    "name": "personal_dashboard_save_setup",
+    "description": "Save setup preferences and optional topics for the dashboard.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "briefing_time": {"type": "string", "description": "Preferred daily briefing time, such as 07:30."},
+            "timezone": {"type": "string", "description": "IANA timezone, such as America/Los_Angeles."},
+            "location": {"type": "string", "description": "User's configured location for weather and planning."},
+            "alert_frequency": {"type": "string", "description": "Alert cadence such as hourly, 30m, 15m, or daily."},
+            "calendar_enabled": {"type": "boolean", "description": "Whether dashboard refreshes may use configured calendar access."},
+            "weekend_planner": {"type": "boolean", "description": "Whether to create weekend planning cards and jobs."},
+            "source_preferences": {"type": "object", "description": "Optional source settings by domain."},
+            "topics": {"type": "array", "items": {"type": "object"}, "description": "Optional topics to create or update."},
+        },
+    },
+}
+
 PERSONAL_DASHBOARD_ADD_STARTER_TOPICS = {
     "name": "personal_dashboard_add_starter_topics",
     "description": "Add generic starter topics for news, weather, calendar, stocks, sports, and weekend planning.",
@@ -168,8 +196,39 @@ PERSONAL_DASHBOARD_CREATE_SAMPLE_CARDS = {
     "parameters": {"type": "object", "properties": {}},
 }
 
+PERSONAL_DASHBOARD_CREATE_CRON_JOBS = {
+    "name": "personal_dashboard_create_cron_jobs",
+    "description": "Create the standard Personal Dashboard Hermes cron jobs using saved setup preferences.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "force": {"type": "boolean", "description": "Create replacement jobs even if job ids are already stored."},
+        },
+    },
+}
+
+PERSONAL_DASHBOARD_QUICKSTART = {
+    "name": "personal_dashboard_quickstart",
+    "description": "Run a friendly first-time setup: save preferences, add starter topics, optionally create sample cards, and optionally create cron jobs.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "briefing_time": {"type": "string"},
+            "timezone": {"type": "string"},
+            "location": {"type": "string"},
+            "alert_frequency": {"type": "string"},
+            "calendar_enabled": {"type": "boolean"},
+            "weekend_planner": {"type": "boolean"},
+            "topics": {"type": "array", "items": {"type": "object"}},
+            "create_sample_cards": {"type": "boolean", "description": "Defaults to true."},
+            "create_cron_jobs": {"type": "boolean", "description": "Defaults to false so the user can review first."},
+        },
+    },
+}
+
 ALL_SCHEMAS = [
     PERSONAL_DASHBOARD_UPSERT_CARD,
+    PERSONAL_DASHBOARD_PATCH_CARD,
     PERSONAL_DASHBOARD_EXPIRE_CARD,
     PERSONAL_DASHBOARD_ADD_EVIDENCE,
     PERSONAL_DASHBOARD_LIST_CARDS,
@@ -179,6 +238,9 @@ ALL_SCHEMAS = [
     PERSONAL_DASHBOARD_GET_TOPICS,
     PERSONAL_DASHBOARD_GET_PREFERENCES,
     PERSONAL_DASHBOARD_GET_SNAPSHOT,
+    PERSONAL_DASHBOARD_SAVE_SETUP,
     PERSONAL_DASHBOARD_ADD_STARTER_TOPICS,
     PERSONAL_DASHBOARD_CREATE_SAMPLE_CARDS,
+    PERSONAL_DASHBOARD_CREATE_CRON_JOBS,
+    PERSONAL_DASHBOARD_QUICKSTART,
 ]

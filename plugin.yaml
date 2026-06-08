@@ -5,6 +5,7 @@ author: "Hermes Personal Dashboard contributors"
 kind: standalone
 tools:
   - personal_dashboard_upsert_card
+  - personal_dashboard_patch_card
   - personal_dashboard_expire_card
   - personal_dashboard_add_evidence
   - personal_dashboard_list_cards
@@ -14,7 +15,10 @@ tools:
   - personal_dashboard_get_topics
   - personal_dashboard_get_preferences
   - personal_dashboard_get_snapshot
+  - personal_dashboard_save_setup
   - personal_dashboard_add_starter_topics
   - personal_dashboard_create_sample_cards
+  - personal_dashboard_create_cron_jobs
+  - personal_dashboard_quickstart
 commands:
   - personal-dashboard
