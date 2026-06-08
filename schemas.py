@@ -119,6 +119,25 @@ PERSONAL_DASHBOARD_SUGGEST_CARD = {
     },
 }
 
+PERSONAL_DASHBOARD_UPSERT_TOPIC = {
+    "name": "personal_dashboard_upsert_topic",
+    "description": "Create or update a configured dashboard topic.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "Optional stable topic id."},
+            "domain": {"type": "string", "description": "Topic domain such as news, weather, stocks, sports, calendar, planning, or project."},
+            "label": {"type": "string", "description": "Short user-facing topic label."},
+            "query": {"type": "string", "description": "What Hermes should fetch or summarize for this topic."},
+            "enabled": {"type": "boolean", "description": "Whether this topic should be used by refresh jobs."},
+            "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+            "cadence": {"type": "string", "description": "Suggested cadence such as alerts, daily, weekly, or manual."},
+            "config": {"type": "object", "description": "Optional structured topic settings."},
+        },
+        "required": ["domain", "label"],
+    },
+}
+
 PERSONAL_DASHBOARD_GET_TOPICS = {
     "name": "personal_dashboard_get_topics",
     "description": "Return configured dashboard topics and interests.",
@@ -131,6 +150,24 @@ PERSONAL_DASHBOARD_GET_PREFERENCES = {
     "parameters": {"type": "object", "properties": {}},
 }
 
+PERSONAL_DASHBOARD_GET_SNAPSHOT = {
+    "name": "personal_dashboard_get_snapshot",
+    "description": "Return cards, topics, preferences, refresh runs, suggestions, and setup status in one snapshot.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+PERSONAL_DASHBOARD_ADD_STARTER_TOPICS = {
+    "name": "personal_dashboard_add_starter_topics",
+    "description": "Add generic starter topics for news, weather, calendar, stocks, sports, and weekend planning.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+PERSONAL_DASHBOARD_CREATE_SAMPLE_CARDS = {
+    "name": "personal_dashboard_create_sample_cards",
+    "description": "Create generic sample cards so a new user can see how the dashboard layout works.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
 ALL_SCHEMAS = [
     PERSONAL_DASHBOARD_UPSERT_CARD,
     PERSONAL_DASHBOARD_EXPIRE_CARD,
@@ -138,6 +175,10 @@ ALL_SCHEMAS = [
     PERSONAL_DASHBOARD_LIST_CARDS,
     PERSONAL_DASHBOARD_RECORD_REFRESH,
     PERSONAL_DASHBOARD_SUGGEST_CARD,
+    PERSONAL_DASHBOARD_UPSERT_TOPIC,
     PERSONAL_DASHBOARD_GET_TOPICS,
     PERSONAL_DASHBOARD_GET_PREFERENCES,
+    PERSONAL_DASHBOARD_GET_SNAPSHOT,
+    PERSONAL_DASHBOARD_ADD_STARTER_TOPICS,
+    PERSONAL_DASHBOARD_CREATE_SAMPLE_CARDS,
 ]

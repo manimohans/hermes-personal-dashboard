@@ -10,7 +10,11 @@ tools:
   - personal_dashboard_list_cards
   - personal_dashboard_record_refresh
   - personal_dashboard_suggest_card
+  - personal_dashboard_upsert_topic
   - personal_dashboard_get_topics
   - personal_dashboard_get_preferences
+  - personal_dashboard_get_snapshot
+  - personal_dashboard_add_starter_topics
+  - personal_dashboard_create_sample_cards
 commands:
   - personal-dashboard

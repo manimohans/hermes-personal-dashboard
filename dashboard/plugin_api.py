@@ -137,6 +137,22 @@ async def dismiss_card(card_id: str) -> Dict[str, Any]:
         _raise(exc)
 
 
+@router.post("/cards/{card_id}/pin")
+async def pin_card(card_id: str) -> Dict[str, Any]:
+    try:
+        return {"card": core.patch_card(card_id, {"pinned": True, "status": "pinned"})}
+    except Exception as exc:
+        _raise(exc)
+
+
+@router.post("/cards/{card_id}/unpin")
+async def unpin_card(card_id: str) -> Dict[str, Any]:
+    try:
+        return {"card": core.patch_card(card_id, {"pinned": False, "status": "active"})}
+    except Exception as exc:
+        _raise(exc)
+
+
 @router.get("/cards/{card_id}/evidence")
 async def get_evidence(card_id: str) -> Dict[str, Any]:
     try:
@@ -265,6 +281,22 @@ async def get_setup_status() -> Dict[str, Any]:
 async def save_setup(body: Dict[str, Any]) -> Dict[str, Any]:
     try:
         return core.save_setup(body)
+    except Exception as exc:
+        _raise(exc)
+
+
+@router.post("/setup/starter-topics")
+async def add_starter_topics() -> Dict[str, Any]:
+    try:
+        return core.add_starter_topics()
+    except Exception as exc:
+        _raise(exc)
+
+
+@router.post("/setup/sample-cards")
+async def create_sample_cards() -> Dict[str, Any]:
+    try:
+        return core.create_sample_cards()
     except Exception as exc:
         _raise(exc)
 

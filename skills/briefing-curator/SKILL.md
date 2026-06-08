@@ -24,9 +24,13 @@ the user configured or explicitly accepted.
 - Write results with `personal_dashboard_upsert_card`.
 - Attach important source evidence with `personal_dashboard_add_evidence`.
 - Record the refresh outcome with `personal_dashboard_record_refresh`.
+- Create or update topics with `personal_dashboard_upsert_topic` only when the
+  user explicitly asks for a topic to be added.
 - Create suggestions with `personal_dashboard_suggest_card` when a possible
   topic or card is inferred but not confirmed by the user.
 - Do not create visible cards from memory or session inference alone.
+- Use `personal_dashboard_get_snapshot` when you need cards, topics,
+  preferences, refresh runs, and suggestions in one call.
 
 ## Card Writing Pattern
 
@@ -55,6 +59,9 @@ Recommended dashboard sections in `payload.section`:
 - `today`: daily briefing, calendar, menus, top news.
 - `week`: weekend plans, upcoming games, events, deadlines.
 - `watching`: tracked topics, teams, stocks, projects, long-running watches.
+
+Pin only cards that are important to keep visible across refreshes. Do not pin
+routine cards unless the user asks.
 
 ## Refresh Pattern
 

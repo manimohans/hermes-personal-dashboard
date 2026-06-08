@@ -72,6 +72,15 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(dismissed.status_code, 200)
         self.assertEqual(dismissed.json()["card"]["status"], "dismissed")
 
+        sample = self.client.post("/cards", json={"id": "pin-me", "domain": "news", "title": "Pin me", "summary": "Pin test."})
+        self.assertEqual(sample.status_code, 200)
+        pinned = self.client.post("/cards/pin-me/pin")
+        self.assertEqual(pinned.status_code, 200)
+        self.assertTrue(pinned.json()["card"]["pinned"])
+        unpinned = self.client.post("/cards/pin-me/unpin")
+        self.assertEqual(unpinned.status_code, 200)
+        self.assertFalse(unpinned.json()["card"]["pinned"])
+
     def test_topics_setup_and_suggestions_routes(self) -> None:
         setup = self.client.post(
             "/setup/save",
@@ -87,6 +96,14 @@ class ApiTest(unittest.TestCase):
         topics = self.client.get("/topics")
         self.assertEqual(topics.status_code, 200)
         self.assertEqual(len(topics.json()["topics"]), 1)
+
+        starters = self.client.post("/setup/starter-topics")
+        self.assertEqual(starters.status_code, 200)
+        self.assertEqual(starters.json()["count"], 6)
+
+        samples = self.client.post("/setup/sample-cards")
+        self.assertEqual(samples.status_code, 200)
+        self.assertEqual(samples.json()["count"], 4)
 
         suggestion = self.client.post(
             "/suggestions",

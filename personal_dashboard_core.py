@@ -27,6 +27,57 @@ REFRESH_STATUSES = {"running", "success", "error"}
 
 _ID_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
 
+STARTER_TOPICS: List[Dict[str, Any]] = [
+    {
+        "domain": "news",
+        "label": "Daily news briefing",
+        "query": "Top important news from my configured sources and interests.",
+        "cadence": "daily",
+        "priority": "medium",
+        "config": {"starter": True},
+    },
+    {
+        "domain": "weather",
+        "label": "Local weather",
+        "query": "Forecast, severe weather, commute-impacting weather, and weekend weather for my configured location.",
+        "cadence": "daily",
+        "priority": "medium",
+        "config": {"starter": True},
+    },
+    {
+        "domain": "calendar",
+        "label": "Today and tomorrow",
+        "query": "Upcoming calendar events, reminders, and schedule conflicts when calendar access is enabled.",
+        "cadence": "daily",
+        "priority": "medium",
+        "config": {"starter": True},
+    },
+    {
+        "domain": "stocks",
+        "label": "Market watchlist",
+        "query": "Configured tickers, unusual moves, threshold alerts, and market context.",
+        "cadence": "alerts",
+        "priority": "medium",
+        "config": {"starter": True},
+    },
+    {
+        "domain": "sports",
+        "label": "Favorite teams",
+        "query": "Configured teams, next games, recent results, injuries, and high-signal news.",
+        "cadence": "daily",
+        "priority": "medium",
+        "config": {"starter": True},
+    },
+    {
+        "domain": "planning",
+        "label": "Weekend planner",
+        "query": "Weather-aware weekend options, calendar constraints, local events, and saved interests.",
+        "cadence": "weekly",
+        "priority": "medium",
+        "config": {"starter": True},
+    },
+]
+
 
 class DashboardError(ValueError):
     """Raised when a dashboard payload is invalid."""
@@ -617,6 +668,17 @@ def delete_topic(topic_id: str, conn: Optional[sqlite3.Connection] = None) -> Di
             cx.close()
 
 
+def add_starter_topics(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+    own = conn is None
+    cx = conn or connect()
+    try:
+        topics = [upsert_topic(item, cx) for item in STARTER_TOPICS]
+        return {"topics": topics, "count": len(topics)}
+    finally:
+        if own:
+            cx.close()
+
+
 def add_evidence(data: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DashboardError("payload must be an object")
@@ -660,6 +722,64 @@ def list_evidence(card_id: str, conn: Optional[sqlite3.Connection] = None) -> Li
             (slugify(card_id, "card"),),
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
+    finally:
+        if own:
+            cx.close()
+
+
+def create_sample_cards(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+    own = conn is None
+    cx = conn or connect()
+    try:
+        now = utc_now()
+        samples = [
+            {
+                "id": "sample-now-weather",
+                "domain": "weather",
+                "title": "Sample weather alert",
+                "summary": "Example card: Hermes will replace this with your configured location's current forecast.",
+                "priority": "high",
+                "updated_at": now,
+                "source_label": "Sample data",
+                "why_shown": "Shows how urgent cards appear in Now.",
+                "payload": {"section": "now", "sample": True},
+            },
+            {
+                "id": "sample-today-briefing",
+                "domain": "news",
+                "title": "Sample daily briefing",
+                "summary": "Example card: the morning job will summarize configured topics and sources here.",
+                "priority": "medium",
+                "updated_at": now,
+                "source_label": "Sample data",
+                "why_shown": "Shows how daily briefing cards appear in Today.",
+                "payload": {"section": "today", "sample": True},
+            },
+            {
+                "id": "sample-weekend-plans",
+                "domain": "planning",
+                "title": "Sample weekend planner",
+                "summary": "Example card: Hermes can combine calendar, weather, sports, and local events into a weekly plan.",
+                "priority": "medium",
+                "updated_at": now,
+                "source_label": "Sample data",
+                "why_shown": "Shows how longer-range planning cards appear in This Week.",
+                "payload": {"section": "week", "sample": True},
+            },
+            {
+                "id": "sample-watchlist",
+                "domain": "stocks",
+                "title": "Sample watchlist",
+                "summary": "Example card: configured tickers, teams, projects, or topics can sit here until something changes.",
+                "priority": "low",
+                "updated_at": now,
+                "source_label": "Sample data",
+                "why_shown": "Shows how ongoing monitors appear in Watching.",
+                "payload": {"section": "watching", "sample": True},
+            },
+        ]
+        cards = [upsert_card(item, cx) for item in samples]
+        return {"cards": cards, "count": len(cards)}
     finally:
         if own:
             cx.close()

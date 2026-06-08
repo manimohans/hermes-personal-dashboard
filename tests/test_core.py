@@ -99,6 +99,15 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(patched["enabled"])
         self.assertEqual(core.delete_topic(topic["id"], self.conn)["deleted"], 1)
 
+    def test_starter_topics_are_generic_and_idempotent(self) -> None:
+        first = core.add_starter_topics(self.conn)
+        second = core.add_starter_topics(self.conn)
+        topics = core.list_topics(conn=self.conn)
+        self.assertEqual(first["count"], 6)
+        self.assertEqual(second["count"], 6)
+        self.assertEqual(len(topics), 6)
+        self.assertEqual({topic["domain"] for topic in topics}, {"calendar", "news", "planning", "sports", "stocks", "weather"})
+
     def test_preferences_save_and_setup_status(self) -> None:
         result = core.save_setup(
             {
@@ -143,6 +152,15 @@ class CoreTest(unittest.TestCase):
         )
         self.assertEqual(run["status"], "success")
         self.assertEqual(len(core.list_refresh_runs(conn=self.conn)), 1)
+
+    def test_sample_cards_are_visible_and_idempotent(self) -> None:
+        first = core.create_sample_cards(self.conn)
+        second = core.create_sample_cards(self.conn)
+        cards = core.list_cards(conn=self.conn)
+        self.assertEqual(first["count"], 4)
+        self.assertEqual(second["count"], 4)
+        self.assertEqual(len(cards), 4)
+        self.assertTrue(all((card.get("payload") or {}).get("sample") for card in cards))
 
     def test_suggestions_accept_card_and_topic(self) -> None:
         suggestion = core.suggest(

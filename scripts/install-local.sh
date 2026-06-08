@@ -18,7 +18,19 @@ fi
 ln -sfn "${PLUGIN_DIR}" "${TARGET}"
 
 echo "Installed ${PLUGIN_NAME} -> ${TARGET}"
-echo "Enable it with:"
-echo "  hermes plugins enable ${PLUGIN_NAME}"
-echo "Then restart/open:"
-echo "  hermes dashboard"
+
+if command -v hermes >/dev/null 2>&1; then
+  echo
+  echo "Next steps:"
+  echo "  hermes plugins enable ${PLUGIN_NAME}"
+  echo "  hermes dashboard"
+  echo
+  echo "Then open the Personal Dashboard tab and use:"
+  echo "  Add starter topics -> Save setup -> Create jobs"
+else
+  echo
+  echo "Hermes was not found on PATH."
+  echo "After installing Hermes Agent, run:"
+  echo "  hermes plugins enable ${PLUGIN_NAME}"
+  echo "  hermes dashboard"
+fi

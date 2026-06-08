@@ -57,6 +57,10 @@ def _handle_suggest_card(params: Dict[str, Any]) -> Any:
     return core.suggest(params)
 
 
+def _handle_upsert_topic(params: Dict[str, Any]) -> Any:
+    return core.upsert_topic(params)
+
+
 def _handle_get_topics(params: Dict[str, Any]) -> Any:
     return core.list_topics(include_disabled=bool(params.get("include_disabled", True)))
 
@@ -66,6 +70,21 @@ def _handle_get_preferences(params: Dict[str, Any]) -> Any:
     return core.get_preferences()
 
 
+def _handle_get_snapshot(params: Dict[str, Any]) -> Any:
+    del params
+    return core.dashboard_snapshot()
+
+
+def _handle_add_starter_topics(params: Dict[str, Any]) -> Any:
+    del params
+    return core.add_starter_topics()
+
+
+def _handle_create_sample_cards(params: Dict[str, Any]) -> Any:
+    del params
+    return core.create_sample_cards()
+
+
 _HANDLERS = {
     "personal_dashboard_upsert_card": _handle_upsert_card,
     "personal_dashboard_expire_card": _handle_expire_card,
@@ -73,18 +92,24 @@ _HANDLERS = {
     "personal_dashboard_list_cards": _handle_list_cards,
     "personal_dashboard_record_refresh": _handle_record_refresh,
     "personal_dashboard_suggest_card": _handle_suggest_card,
+    "personal_dashboard_upsert_topic": _handle_upsert_topic,
     "personal_dashboard_get_topics": _handle_get_topics,
     "personal_dashboard_get_preferences": _handle_get_preferences,
+    "personal_dashboard_get_snapshot": _handle_get_snapshot,
+    "personal_dashboard_add_starter_topics": _handle_add_starter_topics,
+    "personal_dashboard_create_sample_cards": _handle_create_sample_cards,
 }
 
 
 _HELP = """\
-/personal-dashboard — Hermes Personal Dashboard
+/personal-dashboard - Hermes Personal Dashboard
 
 Subcommands:
-  status      Show setup, card, topic, and refresh counts
-  discover    Scan Hermes memory for pending topic suggestions
-  help        Show this help
+  status           Show setup, card, topic, refresh, and suggestion counts
+  starter-topics   Add generic starter topics for common dashboard domains
+  sample-cards     Create generic sample cards so the dashboard is not blank
+  discover         Scan Hermes memory for pending topic suggestions
+  help             Show this help
 
 Open the visual dashboard from `hermes dashboard` at the Personal Dashboard tab.
 The dashboard setup wizard configures generic topics, schedules, and source preferences.
@@ -104,9 +129,16 @@ def _handle_slash(raw_args: str) -> str:
                 f"  configured: {snapshot['setup']['configured']}\n"
                 f"  cards: {len(snapshot['cards'])}\n"
                 f"  topics: {len(snapshot['topics'])}\n"
+                f"  refresh runs: {len(snapshot['refresh_runs'])}\n"
                 f"  pending suggestions: {len(snapshot['suggestions'])}\n"
                 f"  db: {core.db_path()}"
             )
+        if sub in {"starter-topics", "starters"}:
+            result = core.add_starter_topics()
+            return f"Added or updated {result['count']} starter topic(s). Open the dashboard Setup panel to customize them."
+        if sub in {"sample-cards", "demo"}:
+            result = core.create_sample_cards()
+            return f"Created or updated {result['count']} sample card(s). Dismiss them when you are ready for live cards."
         if sub == "discover":
             result = core.discover_suggestions_from_memory()
             return f"Created {result['count']} pending suggestion(s). Review them in the dashboard Setup tab."

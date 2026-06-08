@@ -89,6 +89,7 @@
 
   function CardItem(props) {
     const card = props.card;
+    const isPinned = Boolean(card.pinned) || card.status === "pinned";
     return h("article", { className: cx("hpd-card", card.status === "stale" && "is-stale") },
       h("div", { className: "hpd-card-top" },
         h("div", { className: "hpd-card-title-block" },
@@ -96,7 +97,7 @@
           h("h3", null, card.title)
         ),
         h("div", { className: "hpd-card-badges" },
-          card.pinned ? h(Badge, { className: "hpd-badge-pin" }, "Pinned") : null,
+          isPinned ? h(Badge, { className: "hpd-badge-pin" }, "Pinned") : null,
           h(Badge, { className: priorityClass(card.priority) }, card.priority || "medium"),
           card.status !== "active" ? h(Badge, null, card.status) : null
         )
@@ -110,6 +111,10 @@
       ),
       h("div", { className: "hpd-card-actions" },
         card.source_url ? h("a", { href: card.source_url, target: "_blank", rel: "noreferrer" }, "Source") : null,
+        h(Button, {
+          variant: "ghost",
+          onClick: function () { isPinned ? props.onUnpin(card.id) : props.onPin(card.id); },
+        }, isPinned ? "Unpin" : "Pin"),
         h(Button, {
           variant: "ghost",
           onClick: function () { props.onDismiss(card.id); },
@@ -127,7 +132,13 @@
       props.cards.length
         ? h("div", { className: "hpd-card-grid" },
             props.cards.map(function (card) {
-              return h(CardItem, { key: card.id, card: card, onDismiss: props.onDismiss });
+              return h(CardItem, {
+                key: card.id,
+                card: card,
+                onDismiss: props.onDismiss,
+                onPin: props.onPin,
+                onUnpin: props.onUnpin,
+              });
             })
           )
         : h("div", { className: "hpd-empty" }, props.empty)
@@ -147,7 +158,7 @@
               h("span", { className: cx("hpd-dot", run.status === "error" && "is-error") }),
               h("div", null,
                 h("strong", null, run.job_key),
-                h("p", null, (run.summary || run.error || run.status) + " · " + freshness(run.started_at))
+                h("p", null, (run.summary || run.error || run.status) + " - " + freshness(run.started_at))
               )
             );
           }) : h("div", { className: "hpd-empty" }, "No refreshes yet.")
@@ -176,9 +187,43 @@
     return h("div", { className: "hpd-topic" },
       h("div", null,
         h("strong", null, topic.label),
-        h("p", null, [topic.domain, topic.cadence || "manual", topic.enabled ? "enabled" : "disabled"].join(" · "))
+        h("p", null, [topic.domain, topic.cadence || "manual", topic.enabled ? "enabled" : "disabled"].join(" - "))
       ),
       h(Button, { variant: "ghost", onClick: function () { props.onDelete(topic.id); } }, "Remove")
+    );
+  }
+
+  function FirstRunPanel(props) {
+    const setup = props.setup || {};
+    const hasTopics = (props.topics || []).length > 0;
+    const hasCards = (props.cards || []).length > 0;
+    const cronJobs = ((props.preferences || {}).cron_jobs) || {};
+    const hasJobs = Object.keys(cronJobs).length > 0;
+    const items = [
+      { label: "Save setup", done: Boolean(setup.configured) },
+      { label: "Add topics", done: hasTopics },
+      { label: "Create jobs", done: hasJobs },
+      { label: "Receive cards", done: hasCards },
+    ];
+    if (setup.configured && hasTopics && hasJobs && hasCards) return null;
+    return h("section", { className: "hpd-start" },
+      h("div", { className: "hpd-start-copy" },
+        h("p", { className: "hpd-eyebrow" }, "Start here"),
+        h("h2", null, "Set up your briefing board"),
+        h("div", { className: "hpd-checklist" },
+          items.map(function (item) {
+            return h("span", { key: item.label, className: cx("hpd-checkitem", item.done && "is-done") },
+              h("span", { className: "hpd-checkmark" }, item.done ? "OK" : "-"),
+              item.label
+            );
+          })
+        )
+      ),
+      h("div", { className: "hpd-start-actions" },
+        h(Button, { onClick: props.onAddStarterTopics }, "Add starter topics"),
+        h(Button, { variant: "secondary", onClick: props.onCreateSampleCards }, "Show sample cards"),
+        h(Button, { variant: "secondary", onClick: props.onCreateCron }, "Create jobs")
+      )
     );
   }
 
@@ -287,7 +332,9 @@
           ),
           h("div", { className: "hpd-inline-actions" },
             h(Button, { onClick: function () { props.onAddTopic(topic); setTopic({ domain: "news", label: "", query: "", cadence: "daily" }); } }, "Add topic"),
-            h(Button, { variant: "secondary", onClick: props.onDiscover }, "Discover")
+            h(Button, { variant: "secondary", onClick: props.onAddStarterTopics }, "Starter topics"),
+            h(Button, { variant: "secondary", onClick: props.onDiscover }, "Discover"),
+            h(Button, { variant: "secondary", onClick: props.onCreateSampleCards }, "Sample cards")
           ),
           h("div", { className: "hpd-topic-list" },
             (props.topics || []).length
@@ -351,30 +398,47 @@
       error ? h("div", { className: "hpd-error" }, error) : null,
       loading && !snapshot ? h("div", { className: "hpd-empty hpd-loading" }, "Loading dashboard.") : null,
       snapshot ? h(React.Fragment, null,
+        h(FirstRunPanel, {
+          setup: snapshot.setup,
+          topics: snapshot.topics || [],
+          cards: cards,
+          preferences: snapshot.preferences || {},
+          onAddStarterTopics: function () { mutate(request("/setup/starter-topics", { method: "POST" })); },
+          onCreateSampleCards: function () { mutate(request("/setup/sample-cards", { method: "POST" })); },
+          onCreateCron: function () { mutate(request("/setup/create-cron-jobs", { method: "POST", body: JSON.stringify({}) })); },
+        }),
         h("div", { className: "hpd-sections" },
           h(CardSection, {
             title: "Now",
             cards: grouped.now,
             empty: "No urgent cards.",
             onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
+            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
+            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
           }),
           h(CardSection, {
             title: "Today",
             cards: grouped.today,
             empty: "No cards for today.",
             onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
+            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
+            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
           }),
           h(CardSection, {
             title: "This Week",
             cards: grouped.week,
             empty: "No weekly cards.",
             onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
+            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
+            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
           }),
           h(CardSection, {
             title: "Watching",
             cards: grouped.watching,
             empty: "No watched-topic cards.",
             onDismiss: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/dismiss", { method: "POST" })); },
+            onPin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/pin", { method: "POST" })); },
+            onUnpin: function (id) { mutate(request("/cards/" + encodeURIComponent(id) + "/unpin", { method: "POST" })); },
           })
         ),
         h(Activity, {
@@ -389,6 +453,8 @@
           topics: snapshot.topics || [],
           onSaveSetup: function (draft) { mutate(request("/setup/save", { method: "POST", body: JSON.stringify(draft) })); },
           onCreateCron: function () { mutate(request("/setup/create-cron-jobs", { method: "POST", body: JSON.stringify({}) })); },
+          onAddStarterTopics: function () { mutate(request("/setup/starter-topics", { method: "POST" })); },
+          onCreateSampleCards: function () { mutate(request("/setup/sample-cards", { method: "POST" })); },
           onDiscover: function () { mutate(request("/suggestions/discover", { method: "POST" })); },
           onAddTopic: function (topic) {
             if (!topic.label.trim()) {

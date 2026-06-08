@@ -28,11 +28,13 @@ Open the Hermes dashboard and select **Personal Dashboard**.
 From there:
 
 1. Add your location, timezone, and briefing time.
-2. Add topics such as AI news, local weather, stock tickers, sports teams,
-   calendar items, projects, or RSS/news sources.
+2. Click **Add starter topics** for a useful default topic set, then edit the
+   topics you care about.
 3. Save setup.
 4. Click **Create jobs** to create the standard Hermes cron refresh jobs.
-5. Let Hermes refresh the dashboard through the bundled curator skill.
+5. Optional: click **Show sample cards** to see the layout before live data
+   arrives.
+6. Let Hermes refresh the dashboard through the bundled curator skill.
 
 For local development from a checkout:
 
@@ -63,6 +65,10 @@ Cards include freshness and provenance when Hermes has it:
 - why it is shown
 - when it becomes stale
 - optional source evidence
+
+Users can pin important cards, dismiss cards that are no longer useful, add
+generic starter topics, create sample cards, and let Hermes discover pending
+topic suggestions from memory.
 
 ## How It Works
 
@@ -164,6 +170,30 @@ cron jobs:
 The jobs use the bundled curator skill and write cards through this plugin's
 tools.
 
+For a fast first run, use the buttons in this order:
+
+```text
+Add starter topics -> Save setup -> Create jobs -> Show sample cards
+```
+
+The sample cards are clearly marked as sample data. Dismiss them when live
+cards arrive.
+
+## Slash Command
+
+Inside a Hermes session:
+
+```text
+/personal-dashboard status
+/personal-dashboard starter-topics
+/personal-dashboard sample-cards
+/personal-dashboard discover
+```
+
+Use `starter-topics` to add the generic topic set from chat, `sample-cards` to
+preview the layout, and `discover` to create pending suggestions from Hermes
+memory.
+
 ## Tool Surface
 
 The plugin registers the `personal_dashboard` toolset:
@@ -176,8 +206,12 @@ The plugin registers the `personal_dashboard` toolset:
 | `personal_dashboard_list_cards` | List cards for inspection or refresh logic. |
 | `personal_dashboard_record_refresh` | Record refresh success, failure, or running state. |
 | `personal_dashboard_suggest_card` | Create a pending suggestion for user approval. |
+| `personal_dashboard_upsert_topic` | Create or update a dashboard topic. |
 | `personal_dashboard_get_topics` | Read configured topics. |
 | `personal_dashboard_get_preferences` | Read dashboard setup preferences. |
+| `personal_dashboard_get_snapshot` | Read cards, topics, preferences, refreshes, suggestions, and setup state. |
+| `personal_dashboard_add_starter_topics` | Add generic starter topics. |
+| `personal_dashboard_create_sample_cards` | Create generic sample cards. |
 
 Minimum card payload:
 
@@ -232,6 +266,8 @@ Useful routes:
 | `POST /cards` | Create or update a card. |
 | `PATCH /cards/{id}` | Update card fields. |
 | `POST /cards/{id}/dismiss` | Dismiss a card. |
+| `POST /cards/{id}/pin` | Pin a card. |
+| `POST /cards/{id}/unpin` | Unpin a card. |
 | `GET /topics` | List configured topics. |
 | `POST /topics` | Add or update a topic. |
 | `GET /preferences` | Read setup preferences. |
@@ -239,25 +275,27 @@ Useful routes:
 | `GET /refresh-runs` | Show refresh history. |
 | `GET /suggestions` | List pending suggestions. |
 | `POST /suggestions/{id}/accept` | Accept a suggestion. |
+| `POST /setup/starter-topics` | Add generic starter topics. |
+| `POST /setup/sample-cards` | Create generic sample cards. |
 | `POST /setup/create-cron-jobs` | Create standard refresh jobs. |
 
 ## Repository Layout
 
 ```text
 .
-├── __init__.py
-├── plugin.yaml
-├── personal_dashboard_core.py
-├── schemas.py
-├── dashboard/
-│   ├── manifest.json
-│   ├── plugin_api.py
-│   └── dist/
-├── skills/
-│   └── briefing-curator/
-├── scripts/
-│   └── install-local.sh
-└── tests/
+|-- __init__.py
+|-- plugin.yaml
+|-- personal_dashboard_core.py
+|-- schemas.py
+|-- dashboard/
+|   |-- manifest.json
+|   |-- plugin_api.py
+|   `-- dist/
+|-- skills/
+|   `-- briefing-curator/
+|-- scripts/
+|   `-- install-local.sh
+`-- tests/
 ```
 
 Important files:
