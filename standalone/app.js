@@ -2,13 +2,14 @@
   "use strict";
 
   var API = "/api/plugins/hermes-personal-dashboard";
-  var state = {
-    snapshot: null,
-    loading: true,
-    mutating: false,
-    error: "",
-    notice: ""
-  };
+	var state = {
+	  snapshot: null,
+	  loading: true,
+	  mutating: false,
+	  error: "",
+	  notice: "",
+	  detailsOpen: false
+	};
 
   function cx() {
     return Array.prototype.slice.call(arguments).filter(Boolean).join(" ");
@@ -406,51 +407,54 @@
     );
   }
 
-  function curationPanel(snapshot, cards, contextItems) {
-    var automation = snapshot.automation || {};
-    var curation = snapshot.curation || {};
-    var autoUpdate = autoUpdateState(snapshot);
-    var refreshed = automation.refreshed
-      ? "Scanned just now"
-      : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
-    return el("section", { className: "hpd-start" },
-      el("div", { className: "hpd-start-copy" },
-        el("p", { className: "hpd-eyebrow", text: "AI curated" }),
-        el("h2", { text: curation.title || "Hermes-curated dashboard" }),
-        el("p", { className: "hpd-start-message", text: curation.message || "Useful cards appear here after Hermes curates the inferred signals." }),
-        el("div", { className: "hpd-checklist" },
-          checkItem("OK", "No configuration", true),
-          checkItem(contextItems.length > 0 ? "OK" : "-", contextItems.length + " signals", contextItems.length > 0),
+	function statusPanel(snapshot, cards, contextItems) {
+	  var automation = snapshot.automation || {};
+	  var curation = snapshot.curation || {};
+	  var autoUpdate = autoUpdateState(snapshot);
+	  var refreshed = automation.refreshed
+	    ? "Scanned just now"
+	    : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
+	  return el("section", { className: "hpd-section hpd-side-panel hpd-controls-panel" },
+	    el("div", { className: "hpd-section-head" },
+	      el("h2", { text: "Details" }),
+	      badge(autoUpdate.badge, autoUpdate.tone === "installed" ? "hpd-badge-pin" : "")
+	    ),
+	    el("div", { className: "hpd-panel" },
+	      el("div", { className: "hpd-detail-summary" },
+	        el("strong", { text: curation.title || "Hermes-curated dashboard" }),
+	        el("p", { text: curation.message || "Useful cards appear after Hermes curates inferred signals." })
+	      ),
+	      el("div", { className: "hpd-checklist" },
+	        checkItem("OK", "No configuration", true),
+	        checkItem(contextItems.length > 0 ? "OK" : "-", contextItems.length + " signals", contextItems.length > 0),
           checkItem(cards.length > 0 ? "OK" : "-", cards.length + " curated cards", cards.length > 0),
           curation.scanner_cards_suppressed ? checkItem("OK", curation.scanner_cards_suppressed + " logs hidden", true) : null,
           checkItem(autoUpdate.tone === "installed" ? "OK" : "-", autoUpdate.check, autoUpdate.tone === "installed"),
           checkItem("-", refreshed, false)
-        )
-      ),
-      el("div", { className: "hpd-start-actions" },
-        el("div", { className: "hpd-action-group" },
-          el("div", { className: "hpd-action-title-row" },
-            el("strong", { className: "hpd-action-title", text: "Scan now" }),
-            badge("Manual")
-          ),
-          el("p", { className: "hpd-action-desc", text: "Reads Hermes memory, sessions, and cron output once. This finds signals; Hermes-curated jobs turn the best signals into cards." }),
-          button(state.mutating ? "Scanning" : "Scan Hermes signals", null, function () {
-            mutate(request("/context/refresh", {
-              method: "POST",
-              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false })
-            }));
-          }, state.mutating)
-        ),
-        el("div", { className: cx("hpd-action-group", "hpd-action-group-" + autoUpdate.tone) },
-          el("div", { className: "hpd-action-title-row" },
-            el("strong", { className: "hpd-action-title", text: autoUpdate.title }),
-            badge(autoUpdate.badge, autoUpdate.tone === "installed" ? "hpd-badge-pin" : "")
-          ),
-          el("p", { className: "hpd-action-desc", text: autoUpdate.detail }),
-          button(autoUpdate.button, "secondary", createRefreshJobs, state.mutating || autoUpdate.disabled)
-        )
-      )
-    );
+	      ),
+	      el("div", { className: "hpd-side-actions" },
+	        el("div", { className: "hpd-action-group" },
+	          el("div", { className: "hpd-action-title-row" },
+	            el("strong", { className: "hpd-action-title", text: "Scan" }),
+	            badge("Manual")
+	          ),
+	          button(state.mutating ? "Scanning" : "Scan signals", null, function () {
+	            mutate(request("/context/refresh", {
+	              method: "POST",
+	              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false })
+	            }));
+	          }, state.mutating)
+	        ),
+	        el("div", { className: cx("hpd-action-group", "hpd-action-group-" + autoUpdate.tone) },
+	          el("div", { className: "hpd-action-title-row" },
+	            el("strong", { className: "hpd-action-title", text: autoUpdate.title })
+	          ),
+	          el("p", { className: "hpd-action-desc", text: autoUpdate.detail }),
+	          button(autoUpdate.button, "secondary", createRefreshJobs, state.mutating || autoUpdate.disabled)
+	        )
+	      )
+	    )
+	  );
   }
 
   function checkItem(mark, text, done) {
@@ -537,24 +541,25 @@
     );
   }
 
-  function emptyMain(curation) {
-    curation = curation || {};
-    return el("section", { className: "hpd-section hpd-main-empty" },
-      el("div", { className: "hpd-section-head" },
-        el("h2", { text: "Cards" }),
-        badge("0")
-      ),
-      el("div", { className: "hpd-empty" },
-        el("strong", { text: curation.title || "No curated cards yet" }),
-        el("p", { text: curation.message || "Hermes has not written any dashboard cards yet." })
-      )
-    );
-  }
+	function emptyMain(curation, onOpenDetails) {
+	  curation = curation || {};
+	  return el("section", { className: "hpd-section hpd-main-empty" },
+	    el("div", { className: "hpd-section-head" },
+	      el("h2", { text: "Cards" }),
+	      badge("0")
+	    ),
+	    el("div", { className: "hpd-empty" },
+	      el("strong", { text: curation.title || "No curated cards yet" }),
+	      el("p", { text: curation.message || "Hermes has not written any dashboard cards yet." }),
+	      button("Open Details", "secondary", onOpenDetails, false)
+	    )
+	  );
+	}
 
-  function mainSections(grouped, curation) {
-    var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
-    if (!total) return emptyMain(curation);
-    return el("div", { className: "hpd-sections" },
+	function mainSections(grouped, curation, onOpenDetails) {
+	  var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
+	  if (!total) return emptyMain(curation, onOpenDetails);
+	  return el("div", { className: "hpd-sections" },
       grouped.now.length ? cardSection("Now", grouped.now, "") : null,
       grouped.today.length ? cardSection("Today", grouped.today, "") : null,
       grouped.week.length ? cardSection("This Week", grouped.week, "") : null,
@@ -562,7 +567,7 @@
     );
   }
 
-  function render() {
+	function render() {
     var root = document.getElementById("app-root");
     if (!root) return;
     root.innerHTML = "";
@@ -570,8 +575,16 @@
     var cards = snapshot ? visibleCards(snapshot.cards || []) : [];
     var contextItems = snapshot ? (snapshot.context_items || []) : [];
     var curation = snapshot ? (snapshot.curation || {}) : {};
-    var grouped = { now: [], today: [], week: [], watching: [] };
-    cards.forEach(function (card) {
+	    var grouped = { now: [], today: [], week: [], watching: [] };
+	    var openDetails = function () {
+	      state.detailsOpen = true;
+	      render();
+	    };
+	    var toggleDetails = function () {
+	      state.detailsOpen = !state.detailsOpen;
+	      render();
+	    };
+	    cards.forEach(function (card) {
       var key = sectionFor(card);
       if (grouped[key]) grouped[key].push(card);
       else grouped.watching.push(card);
@@ -582,27 +595,27 @@
         el("div", null,
           el("p", { className: "hpd-eyebrow", text: "Hermes Agent" }),
           el("h1", { text: "Personal Dashboard" })
-        ),
-        el("div", { className: "hpd-header-actions" },
-          badge("Standalone", "hpd-badge-pin"),
-          button(state.loading ? "Refreshing" : "Refresh", "secondary", load, state.loading || state.mutating)
-        )
-      ),
+	        ),
+	        el("div", { className: "hpd-header-actions" },
+	          button(state.loading ? "Refreshing" : "Refresh", "secondary", load, state.loading || state.mutating),
+	          button(state.detailsOpen ? "Hide Details" : "Details", "secondary", toggleDetails, false)
+	        )
+	      ),
       syncStatus(snapshot),
       state.error ? errorPanel(state.error) : null,
-      state.notice ? noticePanel(state.notice) : null,
-      snapshot ? [
-        curationPanel(snapshot, cards, contextItems),
-        el("div", { className: "hpd-dashboard-grid" },
-          el("div", { className: "hpd-main-column" },
-            mainSections(grouped, curation)
-          ),
-          el("aside", { className: "hpd-side-rail" },
-            contextPanel(contextItems),
-            activity(snapshot)
-          )
-        )
-      ] : null
+	      state.notice ? noticePanel(state.notice) : null,
+	      snapshot ? [
+	        el("div", { className: cx("hpd-dashboard-grid", state.detailsOpen && "is-details-open") },
+	          el("div", { className: "hpd-main-column" },
+	            mainSections(grouped, curation, openDetails)
+	          ),
+	          state.detailsOpen ? el("aside", { className: "hpd-side-rail" },
+	            statusPanel(snapshot, cards, contextItems),
+	            contextPanel(contextItems),
+	            activity(snapshot)
+	          ) : null
+	        )
+	      ] : null
     ));
   }
 

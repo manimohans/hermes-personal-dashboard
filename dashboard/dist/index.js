@@ -318,18 +318,23 @@
     );
   }
 
-  function CurationPanel(props) {
+  function StatusPanel(props) {
     const automation = props.automation || {};
     const curation = props.curation || {};
     const contextCount = (props.contextItems || []).length;
     const cardCount = (props.cards || []).length;
     const autoUpdate = autoUpdateState(props.snapshot || {});
     const refreshed = automation.refreshed ? "Scanned just now" : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
-    return h("section", { className: "hpd-start" },
-      h("div", { className: "hpd-start-copy" },
-        h("p", { className: "hpd-eyebrow" }, "AI curated"),
-        h("h2", null, curation.title || "Hermes-curated dashboard"),
-        h("p", { className: "hpd-start-message" }, curation.message || "Useful cards appear here after Hermes curates the inferred signals."),
+    return h("section", { className: "hpd-section hpd-side-panel hpd-controls-panel" },
+      h("div", { className: "hpd-section-head" },
+        h("h2", null, "Details"),
+        h(Badge, { className: autoUpdate.tone === "installed" ? "hpd-badge-pin" : "" }, autoUpdate.badge)
+      ),
+      h("div", { className: "hpd-panel" },
+        h("div", { className: "hpd-detail-summary" },
+          h("strong", null, curation.title || "Hermes-curated dashboard"),
+          h("p", null, curation.message || "Useful cards appear after Hermes curates inferred signals.")
+        ),
         h("div", { className: "hpd-checklist" },
           h("span", { className: cx("hpd-checkitem", "is-done") }, h("span", { className: "hpd-checkmark" }, "OK"), "No configuration"),
           h("span", { className: cx("hpd-checkitem", contextCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, contextCount > 0 ? "OK" : "-"), contextCount + " signals"),
@@ -337,24 +342,22 @@
           curation.scanner_cards_suppressed ? h("span", { className: cx("hpd-checkitem", "is-done") }, h("span", { className: "hpd-checkmark" }, "OK"), curation.scanner_cards_suppressed + " logs hidden") : null,
           h("span", { className: cx("hpd-checkitem", autoUpdate.tone === "installed" && "is-done") }, h("span", { className: "hpd-checkmark" }, autoUpdate.tone === "installed" ? "OK" : "-"), autoUpdate.check),
           h("span", { className: "hpd-checkitem" }, h("span", { className: "hpd-checkmark" }, "-"), refreshed)
-        )
-      ),
-      h("div", { className: "hpd-start-actions" },
-        h("div", { className: "hpd-action-group" },
-          h("div", { className: "hpd-action-title-row" },
-            h("strong", { className: "hpd-action-title" }, "Scan now"),
-            h(Badge, null, "Manual")
-          ),
-          h("p", { className: "hpd-action-desc" }, "Reads Hermes memory, sessions, and cron output once. This finds signals; Hermes-curated jobs turn the best signals into cards."),
-          h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan Hermes signals")
         ),
-        h("div", { className: cx("hpd-action-group", "hpd-action-group-" + autoUpdate.tone) },
-          h("div", { className: "hpd-action-title-row" },
-            h("strong", { className: "hpd-action-title" }, autoUpdate.title),
-            h(Badge, { className: autoUpdate.tone === "installed" ? "hpd-badge-pin" : "" }, autoUpdate.badge)
+        h("div", { className: "hpd-side-actions" },
+          h("div", { className: "hpd-action-group" },
+            h("div", { className: "hpd-action-title-row" },
+              h("strong", { className: "hpd-action-title" }, "Scan"),
+              h(Badge, null, "Manual")
+            ),
+            h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan signals")
           ),
-          h("p", { className: "hpd-action-desc" }, autoUpdate.detail),
-          h(Button, { variant: "secondary", onClick: props.onCreateCron, disabled: props.loading || autoUpdate.disabled }, autoUpdate.button)
+          h("div", { className: cx("hpd-action-group", "hpd-action-group-" + autoUpdate.tone) },
+            h("div", { className: "hpd-action-title-row" },
+              h("strong", { className: "hpd-action-title" }, autoUpdate.title)
+            ),
+            h("p", { className: "hpd-action-desc" }, autoUpdate.detail),
+            h(Button, { variant: "secondary", onClick: props.onCreateCron, disabled: props.loading || autoUpdate.disabled }, autoUpdate.button)
+          )
         )
       )
     );
@@ -445,7 +448,8 @@
       ),
       h("div", { className: "hpd-empty" },
         h("strong", null, curation.title || "No curated cards yet"),
-        h("p", null, curation.message || "Hermes has not written any dashboard cards yet.")
+        h("p", null, curation.message || "Hermes has not written any dashboard cards yet."),
+        h(Button, { variant: "secondary", onClick: props.onOpenDetails }, "Open Details")
       )
     );
   }
@@ -453,7 +457,7 @@
   function MainSections(props) {
     const grouped = props.grouped;
     const total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
-    if (!total) return h(EmptyMain, { curation: props.curation });
+    if (!total) return h(EmptyMain, { curation: props.curation, onOpenDetails: props.onOpenDetails });
     return h("div", { className: "hpd-sections" },
       grouped.now.length ? h(CardSection, Object.assign({
         title: "Now",
@@ -484,6 +488,7 @@
     const [mutating, setMutating] = React.useState(false);
     const [error, setError] = React.useState("");
     const [notice, setNotice] = React.useState("");
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
 
     const load = React.useCallback(function () {
       setLoading(true);
@@ -581,38 +586,39 @@
           h("h1", null, "Personal Dashboard")
         ),
         h("div", { className: "hpd-header-actions" },
-          h(Badge, { className: "hpd-badge-pin" }, "Autonomous"),
-          h(Button, { variant: "secondary", onClick: load, disabled: loading || mutating }, loading ? "Refreshing" : "Refresh")
+          h(Button, { variant: "secondary", onClick: load, disabled: loading || mutating }, loading ? "Refreshing" : "Refresh"),
+          h(Button, { variant: "secondary", onClick: function () { setDetailsOpen(!detailsOpen); } }, detailsOpen ? "Hide Details" : "Details")
         )
       ),
       h(SyncStatus, { snapshot: snapshot, loading: loading, mutating: mutating }),
       error ? h(ErrorPanel, { message: error }) : null,
       notice ? h(NoticePanel, { message: notice }) : null,
       snapshot ? h(React.Fragment, null,
-        h(CurationPanel, {
-          snapshot: snapshot,
-          automation: snapshot.automation || {},
-          curation: curation,
-          contextItems: contextItems,
-          cards: cards,
-          loading: mutating,
-          onScanNow: function () {
-            mutate(request("/context/refresh", {
-              method: "POST",
-              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false }),
-            }));
-          },
-          onCreateCron: createRefreshJobs,
-        }),
-        h("div", { className: "hpd-dashboard-grid" },
+        h("div", { className: cx("hpd-dashboard-grid", detailsOpen && "is-details-open") },
           h("div", { className: "hpd-main-column" },
             h(MainSections, {
               grouped: grouped,
               curation: curation,
               cardActions: cardActions,
+              onOpenDetails: function () { setDetailsOpen(true); },
             })
           ),
-          h("aside", { className: "hpd-side-rail" },
+          detailsOpen ? h("aside", { className: "hpd-side-rail" },
+            h(StatusPanel, {
+              snapshot: snapshot,
+              automation: snapshot.automation || {},
+              curation: curation,
+              contextItems: contextItems,
+              cards: cards,
+              loading: mutating,
+              onScanNow: function () {
+                mutate(request("/context/refresh", {
+                  method: "POST",
+                  body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false }),
+                }));
+              },
+              onCreateCron: createRefreshJobs,
+            }),
             h(ContextPanel, {
               items: contextItems,
               onHideContext: function (id) { mutate(request("/context/" + encodeURIComponent(id) + "/hide", { method: "POST" })); },
@@ -621,7 +627,7 @@
               runs: snapshot.refresh_runs || [],
               sourceReport: snapshot.source_report || {},
             })
-          )
+          ) : null
         )
       ) : null
     );
