@@ -181,6 +181,16 @@
     };
   }
 
+  function formatJobLines(jobs) {
+    if (!jobs || !jobs.length) return "";
+    return jobs.map(function (job) {
+      const name = job.name || job.kind || "Dashboard job";
+      const cadence = job.cadence || job.schedule || "scheduled";
+      const purpose = job.purpose || "refresh dashboard cards";
+      return "- " + name + ": " + cadence + "; " + purpose + ".";
+    }).join("\n");
+  }
+
   function Button(props) {
     return h("button", Object.assign({}, props, {
       className: cx("hpd-button", props.variant && "hpd-button-" + props.variant, props.className),
@@ -514,25 +524,28 @@
       return request("/automation/ensure-jobs", { method: "POST", body: JSON.stringify({}) })
         .then(function (result) {
           setError("");
+          const jobLines = formatJobLines(result && result.jobs);
           if (result && result.error) {
             setNotice([
               "Auto updates were not installed.",
-              "Tried to create Hermes curator jobs: morning brief, alert watcher, and weekend planner.",
+              "Tried to create these scheduled Hermes curator jobs:",
+              jobLines,
               result.error,
               result.next_step || "Run /personal-dashboard create-jobs inside Hermes."
             ].join("\n"));
           } else if (result && result.skipped) {
-            const existingCount = cronJobCount({ cron_jobs: result.existing || {} });
             setNotice([
               "Auto updates are already installed.",
-              (existingCount || "Existing") + " scheduled Hermes curator " + (existingCount === 1 ? "job is" : "jobs are") + " recorded. Cards update when Hermes runs them."
+              jobLines,
+              "These are scheduled jobs. Installing them does not run the curator immediately; cards update when Hermes runs them."
             ].join("\n"));
           } else {
             const createdCount = (result.created || []).length;
             setNotice([
               "Auto updates installed.",
-              "Created " + createdCount + " Hermes curator " + (createdCount === 1 ? "job" : "jobs") + ": morning brief, alert watcher, and weekend planner.",
-              "Cards will update after Hermes runs them."
+              "Created " + createdCount + " scheduled Hermes curator " + (createdCount === 1 ? "job" : "jobs") + ".",
+              jobLines,
+              "Installing jobs does not run the curator immediately. Cards update after Hermes runs them."
             ].join("\n"));
           }
           return load();

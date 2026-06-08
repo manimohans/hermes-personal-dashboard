@@ -69,12 +69,58 @@ def alert_schedule(value: Any) -> str:
     return "every 1h"
 
 
+def job_specs(prefs: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, str]]:
+    body = body or {}
+    briefing_time = str(prefs.get("briefing_time") or body.get("briefing_time") or "07:30")
+    alert_frequency = str(prefs.get("alert_frequency") or body.get("alert_frequency") or "hourly").strip().lower()
+    if alert_frequency in {"15m", "every-15-min", "every 15m"}:
+        alert_cadence = "every 15 minutes"
+    elif alert_frequency in {"30m", "every-30-min", "every 30m"}:
+        alert_cadence = "every 30 minutes"
+    elif alert_frequency in {"daily", "once-daily"}:
+        alert_cadence = "daily at 12:00 local time"
+    else:
+        alert_cadence = "hourly"
+    return {
+        "morning": {
+            "name": "Personal Dashboard Morning Briefing",
+            "schedule": parse_hhmm(briefing_time),
+            "cadence": f"daily at {briefing_time} local time",
+            "purpose": "turn morning-relevant Hermes context into briefing cards",
+        },
+        "alerts": {
+            "name": "Personal Dashboard Alerts Refresh",
+            "schedule": alert_schedule(alert_frequency),
+            "cadence": alert_cadence,
+            "purpose": "refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts",
+        },
+        "weekend": {
+            "name": "Personal Dashboard Weekend Planner",
+            "schedule": "0 15 * * 5",
+            "cadence": "Fridays at 15:00 local time",
+            "purpose": "prepare weekend and planning cards from Hermes context",
+        },
+    }
+
+
+def jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]]:
+    specs = job_specs(prefs, body)
+    rows = []
+    for kind in ("morning", "alerts", "weekend"):
+        spec = dict(specs[kind])
+        spec["kind"] = kind
+        if kind in job_ids:
+            spec["id"] = str(job_ids[kind])
+        rows.append(spec)
+    return rows
+
+
 def create_standard_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     body = body or {}
     prefs = core.get_preferences()
     existing = prefs.get("cron_jobs") or {}
     if existing and not body.get("force"):
-        return {"created": [], "existing": existing, "skipped": True}
+        return {"created": [], "existing": existing, "skipped": True, "jobs": jobs_payload(prefs, existing, body)}
     try:
         from cron import jobs as cron_jobs  # type: ignore
     except Exception as exc:
@@ -85,25 +131,17 @@ def create_standard_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str
             "skipped": True,
             "error": f"cron integration unavailable: {exc}",
             "next_step": "Open Hermes and run `/personal-dashboard create-jobs` where the Hermes cron runtime is available.",
+            "jobs": jobs_payload(prefs, existing, body),
         }
 
-    schedules = {
-        "morning": parse_hhmm(prefs.get("briefing_time") or body.get("briefing_time") or "07:30"),
-        "alerts": alert_schedule(prefs.get("alert_frequency") or body.get("alert_frequency") or "hourly"),
-        "weekend": "0 15 * * 5",
-    }
-    names = {
-        "morning": "Personal Dashboard Morning Briefing",
-        "alerts": "Personal Dashboard Alerts Refresh",
-        "weekend": "Personal Dashboard Weekend Planner",
-    }
+    specs = job_specs(prefs, body)
     created = []
     cron_job_ids: Dict[str, str] = {}
-    for kind, schedule in schedules.items():
+    for kind in ("morning", "alerts", "weekend"):
         job = cron_jobs.create_job(
             prompt=cron_prompt(kind),
-            schedule=schedule,
-            name=names[kind],
+            schedule=specs[kind]["schedule"],
+            name=specs[kind]["name"],
             deliver="local",
             skills=[f"{core.PLUGIN_ID}:briefing-curator"],
             origin={"plugin": core.PLUGIN_ID, "kind": kind},
@@ -112,7 +150,7 @@ def create_standard_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str
         if isinstance(job, dict) and job.get("id"):
             cron_job_ids[kind] = str(job["id"])
     core.put_preferences({"cron_jobs": cron_job_ids})
-    return {"created": created, "existing": {}, "skipped": False}
+    return {"created": created, "existing": {}, "skipped": False, "jobs": jobs_payload(prefs, cron_job_ids, body)}
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -136,7 +136,36 @@ class PluginRegistrationTest(unittest.TestCase):
     def test_slash_create_jobs_reports_missing_cron_runtime(self) -> None:
         message = self.ctx.commands["personal-dashboard"]["handler"]("create-jobs")
         self.assertIn("Auto updates were not installed.", message)
-        self.assertIn("morning brief, alert watcher, weekend planner", message)
+        self.assertIn("scheduled Hermes curator jobs", message)
+        self.assertIn("Personal Dashboard Morning Briefing", message)
+
+    def test_slash_create_jobs_explains_schedule_not_immediate_run(self) -> None:
+        old_cron = sys.modules.get("cron")
+
+        class FakeJobs:
+            calls = []
+
+            @classmethod
+            def create_job(cls, **kwargs):
+                cls.calls.append(kwargs)
+                return {"id": f"job-{len(cls.calls)}"}
+
+        sys.modules["cron"] = types.SimpleNamespace(jobs=FakeJobs)
+        try:
+            message = self.ctx.commands["personal-dashboard"]["handler"]("create-jobs")
+        finally:
+            if old_cron is None:
+                sys.modules.pop("cron", None)
+            else:
+                sys.modules["cron"] = old_cron
+
+        self.assertEqual(len(FakeJobs.calls), 3)
+        self.assertIn("Auto updates installed: created 3 scheduled Hermes curator job(s).", message)
+        self.assertIn("Personal Dashboard Morning Briefing: daily at 07:30 local time", message)
+        self.assertIn("Personal Dashboard Alerts Refresh: hourly", message)
+        self.assertIn("Personal Dashboard Weekend Planner: Fridays at 15:00 local time", message)
+        self.assertIn("Immediate scan completed.", message)
+        self.assertIn("job creation does not execute the curator immediately", message)
 
 
 if __name__ == "__main__":

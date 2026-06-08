@@ -79,6 +79,52 @@ def _alert_schedule(value: Any) -> str:
     return "every 1h"
 
 
+def _job_specs(prefs: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, str]]:
+    body = body or {}
+    briefing_time = str(prefs.get("briefing_time") or body.get("briefing_time") or "07:30")
+    alert_frequency = str(prefs.get("alert_frequency") or body.get("alert_frequency") or "hourly").strip().lower()
+    if alert_frequency in {"15m", "every-15-min", "every 15m"}:
+        alert_cadence = "every 15 minutes"
+    elif alert_frequency in {"30m", "every-30-min", "every 30m"}:
+        alert_cadence = "every 30 minutes"
+    elif alert_frequency in {"daily", "once-daily"}:
+        alert_cadence = "daily at 12:00 local time"
+    else:
+        alert_cadence = "hourly"
+    return {
+        "morning": {
+            "name": _cron_name("morning"),
+            "schedule": _parse_hhmm(briefing_time),
+            "cadence": f"daily at {briefing_time} local time",
+            "purpose": "turn morning-relevant Hermes context into briefing cards",
+        },
+        "alerts": {
+            "name": _cron_name("alerts"),
+            "schedule": _alert_schedule(alert_frequency),
+            "cadence": alert_cadence,
+            "purpose": "refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts",
+        },
+        "weekend": {
+            "name": _cron_name("weekend"),
+            "schedule": "0 15 * * 5",
+            "cadence": "Fridays at 15:00 local time",
+            "purpose": "prepare weekend and planning cards from Hermes context",
+        },
+    }
+
+
+def _jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]]:
+    specs = _job_specs(prefs, body)
+    rows = []
+    for kind in ("morning", "alerts", "weekend"):
+        spec = dict(specs[kind])
+        spec["kind"] = kind
+        if kind in job_ids:
+            spec["id"] = str(job_ids[kind])
+        rows.append(spec)
+    return rows
+
+
 def _create_cron_job(kind: str, schedule: str) -> Dict[str, Any]:
     from cron import jobs as cron_jobs
 
@@ -248,7 +294,7 @@ async def create_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, A
         existing = prefs.get("cron_jobs") or {}
         force = bool(body.get("force"))
         if existing and not force:
-            return {"created": [], "existing": existing, "skipped": True}
+            return {"created": [], "existing": existing, "skipped": True, "jobs": _jobs_payload(prefs, existing, body)}
 
         try:
             import cron  # noqa: F401
@@ -260,25 +306,21 @@ async def create_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, A
                 "skipped": True,
                 "error": f"cron integration unavailable: {exc}",
                 "next_step": "Open Hermes and run `/personal-dashboard create-jobs` where the Hermes cron runtime is available.",
+                "jobs": _jobs_payload(prefs, existing, body),
             }
 
-        schedules = {
-            "morning": _parse_hhmm(prefs.get("briefing_time") or body.get("briefing_time") or "07:30"),
-            "alerts": _alert_schedule(prefs.get("alert_frequency") or body.get("alert_frequency") or "hourly"),
-            "weekend": "0 15 * * 5",
-        }
-
+        specs = _job_specs(prefs, body)
         created = []
         cron_jobs: Dict[str, str] = {}
-        for kind, schedule in schedules.items():
-            job = _create_cron_job(kind, schedule)
+        for kind in ("morning", "alerts", "weekend"):
+            job = _create_cron_job(kind, specs[kind]["schedule"])
             created.append(job)
             if isinstance(job, dict) and job.get("id"):
                 cron_jobs[kind] = str(job["id"])
 
         prefs["cron_jobs"] = cron_jobs
         core.put_preferences({"cron_jobs": cron_jobs})
-        return {"created": created, "existing": {}, "skipped": False}
+        return {"created": created, "existing": {}, "skipped": False, "jobs": _jobs_payload(prefs, cron_jobs, body)}
     except Exception as exc:
         _raise(exc)
 

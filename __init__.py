@@ -62,11 +62,56 @@ def _alert_schedule(value: Any) -> str:
     return "every 1h"
 
 
+def _job_specs(prefs: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    briefing_time = str(prefs.get("briefing_time") or "07:30")
+    alert_frequency = str(prefs.get("alert_frequency") or "hourly").strip().lower()
+    if alert_frequency in {"15m", "every-15-min", "every 15m"}:
+        alert_cadence = "every 15 minutes"
+    elif alert_frequency in {"30m", "every-30-min", "every 30m"}:
+        alert_cadence = "every 30 minutes"
+    elif alert_frequency in {"daily", "once-daily"}:
+        alert_cadence = "daily at 12:00 local time"
+    else:
+        alert_cadence = "hourly"
+    return {
+        "morning": {
+            "name": _cron_name("morning"),
+            "schedule": _parse_hhmm(briefing_time),
+            "cadence": f"daily at {briefing_time} local time",
+            "purpose": "turn morning-relevant Hermes context into briefing cards",
+        },
+        "alerts": {
+            "name": _cron_name("alerts"),
+            "schedule": _alert_schedule(alert_frequency),
+            "cadence": alert_cadence,
+            "purpose": "refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts",
+        },
+        "weekend": {
+            "name": _cron_name("weekend"),
+            "schedule": "0 15 * * 5",
+            "cadence": "Fridays at 15:00 local time",
+            "purpose": "prepare weekend and planning cards from Hermes context",
+        },
+    }
+
+
+def _jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any]) -> list[Dict[str, Any]]:
+    specs = _job_specs(prefs)
+    rows = []
+    for kind in ("morning", "alerts", "weekend"):
+        spec = dict(specs[kind])
+        spec["kind"] = kind
+        if kind in job_ids:
+            spec["id"] = str(job_ids[kind])
+        rows.append(spec)
+    return rows
+
+
 def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
     prefs = core.get_preferences()
     existing = prefs.get("cron_jobs") or {}
     if existing and not force:
-        return {"created": [], "existing": existing, "skipped": True}
+        return {"created": [], "existing": existing, "skipped": True, "jobs": _jobs_payload(prefs, existing)}
 
     try:
         from cron import jobs as cron_jobs
@@ -78,21 +123,17 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
             "skipped": True,
             "error": f"cron integration unavailable: {exc}",
             "next_step": "Run `/personal-dashboard create-jobs` inside Hermes where the cron runtime is available.",
+            "jobs": _jobs_payload(prefs, existing),
         }
 
-    schedules = {
-        "morning": _parse_hhmm(prefs.get("briefing_time") or "07:30"),
-        "alerts": _alert_schedule(prefs.get("alert_frequency") or "hourly"),
-    }
-    schedules["weekend"] = "0 15 * * 5"
-
+    specs = _job_specs(prefs)
     created = []
     cron_job_ids: Dict[str, str] = {}
-    for kind, schedule in schedules.items():
+    for kind in ("morning", "alerts", "weekend"):
         job = cron_jobs.create_job(
             prompt=_cron_prompt(kind),
-            schedule=schedule,
-            name=_cron_name(kind),
+            schedule=specs[kind]["schedule"],
+            name=specs[kind]["name"],
             deliver="local",
             skills=[f"{core.PLUGIN_ID}:briefing-curator"],
             origin={"plugin": core.PLUGIN_ID, "kind": kind},
@@ -102,7 +143,7 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
             cron_job_ids[kind] = str(job["id"])
 
     core.put_preferences({"cron_jobs": cron_job_ids})
-    return {"created": created, "existing": {}, "skipped": False}
+    return {"created": created, "existing": {}, "skipped": False, "jobs": _jobs_payload(prefs, cron_job_ids)}
 
 
 def _ok(payload: Any) -> str:
@@ -183,6 +224,16 @@ def _handle_get_snapshot(params: Dict[str, Any]) -> Any:
 
 def _handle_create_cron_jobs(params: Dict[str, Any]) -> Any:
     return _create_standard_cron_jobs(force=bool(params.get("force", False)))
+
+
+def _format_job_lines(jobs: Any) -> str:
+    rows = []
+    for job in jobs or []:
+        name = job.get("name") or job.get("kind") or "Dashboard job"
+        cadence = job.get("cadence") or job.get("schedule") or "scheduled"
+        purpose = job.get("purpose") or "refresh dashboard cards"
+        rows.append(f"  - {name}: {cadence}; {purpose}.")
+    return "\n".join(rows)
 
 
 def _handle_refresh_from_hermes(params: Dict[str, Any]) -> Any:
@@ -273,16 +324,34 @@ def _handle_slash(raw_args: str) -> str:
             return "\n".join(lines)
         if sub in {"create-jobs", "jobs"}:
             result = _create_standard_cron_jobs(force=False)
+            jobs = _format_job_lines(result.get("jobs"))
             if result.get("error"):
                 return (
                     "Auto updates were not installed.\n"
-                    "  tried to create: morning brief, alert watcher, weekend planner\n"
+                    "Tried to create these scheduled Hermes curator jobs:\n"
+                    f"{jobs}\n"
                     f"  error: {result['error']}\n"
                     f"  next: {result.get('next_step') or 'Run this command inside Hermes.'}"
                 )
+            scan = core.refresh_from_hermes_context(create_cards=False)
+            scan_lines = (
+                "Immediate scan completed.\n"
+                f"  sources scanned: {scan['sources']}\n"
+                f"  inferred signals: {len(scan['context_items'])}\n"
+                f"  curated cards currently stored: {len(scan['cards'])}\n"
+                "  note: scheduled jobs are installed, but they run later; job creation does not execute the curator immediately."
+            )
             if result.get("skipped"):
-                return f"Auto updates are already installed: {result['existing']}"
-            return f"Auto updates installed: created {len(result.get('created') or [])} Hermes curator job(s)."
+                return (
+                    "Auto updates were already installed.\n"
+                    f"{jobs}\n\n"
+                    f"{scan_lines}"
+                )
+            return (
+                f"Auto updates installed: created {len(result.get('created') or [])} scheduled Hermes curator job(s).\n"
+                f"{jobs}\n\n"
+                f"{scan_lines}"
+            )
         return f"Unknown subcommand: {sub}\n\n{_HELP}"
     except Exception as exc:
         return f"personal-dashboard failed: {exc}"

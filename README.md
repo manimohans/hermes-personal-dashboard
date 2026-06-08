@@ -195,6 +195,20 @@ Install auto updates, when running with Hermes plugin support:
 /personal-dashboard create-jobs
 ```
 
+That command installs three scheduled Hermes curator jobs. It does not execute
+those jobs at install time.
+
+| Job | When it runs | What it does |
+| --- | --- | --- |
+| Personal Dashboard Morning Briefing | daily at `07:30` local time | turns morning-relevant Hermes context into briefing cards |
+| Personal Dashboard Alerts Refresh | hourly by default | refreshes time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts |
+| Personal Dashboard Weekend Planner | Fridays at `15:00` local time | prepares weekend and planning cards from Hermes context |
+
+After installing jobs, the command also performs an immediate deterministic
+scan of Hermes sources so the dashboard can show inferred signals right away.
+Cards still appear when a Hermes curator job or chat writes them with
+`personal_dashboard_upsert_card`.
+
 ## How It Works
 
 ```text

@@ -194,7 +194,7 @@ PERSONAL_DASHBOARD_GET_PREFERENCES = {
 
 PERSONAL_DASHBOARD_CREATE_CRON_JOBS = {
     "name": "personal_dashboard_create_cron_jobs",
-    "description": "Create autonomous Personal Dashboard Hermes cron jobs. Jobs infer what to refresh from Hermes memory/session context.",
+    "description": "Install scheduled Personal Dashboard Hermes curator jobs. This schedules morning, alert, and weekend jobs; it does not run the curator immediately.",
     "parameters": {
         "type": "object",
         "properties": {
