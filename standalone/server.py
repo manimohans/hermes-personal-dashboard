@@ -267,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the standalone Hermes Personal Dashboard.")
     parser.add_argument("--host", default=os.environ.get("HPD_HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("HPD_PORT", "9119")))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("HPD_PORT", "9120")))
     parser.add_argument("--hermes-home", default=os.environ.get("HERMES_HOME"))
     args = parser.parse_args()
     if args.hermes_home:

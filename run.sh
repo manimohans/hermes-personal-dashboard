@@ -14,7 +14,7 @@ LAUNCHER_DIR="${HPD_LAUNCHER_DIR:-"${HOME}/.local/bin"}"
 LAUNCHER="${LAUNCHER_DIR}/${APP_NAME}"
 
 HOST="127.0.0.1"
-PORT="9119"
+PORT="9120"
 OPEN_BROWSER=1
 INSECURE=0
 SKIP_BUILD=0
@@ -41,7 +41,7 @@ Common:
   --lan                  Raspberry Pi / server shortcut:
                          --host 0.0.0.0 --insecure --no-open
   --host HOST            Bind address. Default: 127.0.0.1
-  --port PORT            Preferred port. Default: 9119
+  --port PORT            Preferred port. Default: 9120
   --insecure             Allow non-localhost binding. Use only on trusted LANs.
   --no-open              Do not open a browser.
   --open                 Open a browser after the server starts.
@@ -67,7 +67,7 @@ Run:
 Examples:
   ./run.sh
   ./run.sh --lan
-  ./run.sh --host 0.0.0.0 --port 9119 --insecure --no-open
+  ./run.sh --host 0.0.0.0 --port 9120 --insecure --no-open
   curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboard/main/run.sh | bash -s -- --lan
 EOF
 }
@@ -169,6 +169,11 @@ stop_running() {
     local pid
     pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
     if [ -n "${pid}" ] && kill -0 "${pid}" >/dev/null 2>&1; then
+      if ! pid_belongs_to_app "${pid}"; then
+        echo "PID file points at process ${pid}, but it is not ${APP_NAME}. Leaving it untouched."
+        rm -f "${PID_FILE}"
+        return
+      fi
       echo "Stopping existing ${APP_NAME} server (${pid})."
       kill "${pid}" >/dev/null 2>&1 || true
       sleep 1
@@ -178,6 +183,24 @@ stop_running() {
     fi
     rm -f "${PID_FILE}"
   fi
+}
+
+pid_command() {
+  ps -p "$1" -o command= 2>/dev/null || true
+}
+
+pid_belongs_to_app() {
+  local pid="$1"
+  local command_line
+  command_line="$(pid_command "${pid}")"
+  case "${command_line}" in
+    *"${APP_NAME}"*"/standalone/server.py"*|*"${APP_TARGET}/standalone/server.py"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 remove_existing() {
@@ -324,16 +347,41 @@ finally:
 PY
 }
 
+port_owner() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print $1 " pid " $2; exit}'
+  elif command -v ss >/dev/null 2>&1; then
+    ss -ltnp "sport = :${port}" 2>/dev/null | awk 'NR==2 {print $0; exit}'
+  else
+    return 0
+  fi
+}
+
 choose_port() {
   local candidate="${PORT}"
   local limit=$((PORT + 20))
+  local requested="${PORT}"
   if [ "${limit}" -gt 65535 ]; then
     limit=65535
   fi
   while ! port_available "${HOST}" "${candidate}"; do
+    local owner
+    owner="$(port_owner "${candidate}")"
     if [ "${STRICT_PORT}" -eq 1 ]; then
-      echo "Port ${candidate} is already in use. Stop that server or choose --port." >&2
+      if [ -n "${owner}" ]; then
+        echo "Port ${candidate} is already in use by ${owner}. Leaving it untouched; choose --port or stop that process." >&2
+      else
+        echo "Port ${candidate} is already in use. Leaving it untouched; choose --port or stop that process." >&2
+      fi
       exit 1
+    fi
+    if [ "${candidate}" = "${requested}" ]; then
+      if [ -n "${owner}" ]; then
+        echo "Port ${candidate} is busy (${owner}); leaving it untouched and looking for the next free port."
+      else
+        echo "Port ${candidate} is busy; leaving it untouched and looking for the next free port."
+      fi
     fi
     candidate=$((candidate + 1))
     if [ "${candidate}" -gt "${limit}" ]; then
@@ -490,7 +538,6 @@ EOF
 }
 
 start_background() {
-  stop_running
   local py
   py="$(python_cmd)"
   echo "Starting ${APP_NAME} on ${HOST}:${PORT}."
@@ -560,6 +607,7 @@ if [ "${START_SERVER}" -ne 1 ]; then
   exit 0
 fi
 
+stop_running
 choose_port
 
 if [ "${FOREGROUND}" -eq 1 ]; then

@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/manimohans/hermes-personal-dashboar
 Then open the printed URL. It will usually look like:
 
 ```text
-http://<machine-ip>:9119
+http://<machine-ip>:9120
 ```
 
 No Hermes Dashboard tab is required.
@@ -87,15 +87,16 @@ The launcher follows the useful Hermes dashboard conventions:
 | Flag | Purpose |
 | --- | --- |
 | `--host` | bind address, default `127.0.0.1` |
-| `--port` | preferred port, default `9119` |
+| `--port` | preferred port, default `9120` |
 | `--insecure` | required for non-localhost binding |
 | `--no-open` | do not launch a browser |
 | `--no-plugin` | skip Hermes tool/skill bundle install |
 | `--skip-build` | skip local syntax/build checks |
 | `--strict-port` | fail if the requested port is busy |
 
-If the preferred port is busy, `run.sh` chooses the next free port and prints
-the actual URL.
+If the preferred port is busy, `run.sh` leaves that process alone, chooses the
+next free port, and prints the actual URL. This keeps a Hermes dashboard already
+running on that port from being stopped or overwritten.
 
 Manual install:
 
@@ -127,7 +128,7 @@ Uninstall:
 Run manually:
 
 ```bash
-hermes-personal-dashboard --host 0.0.0.0 --port 9119
+hermes-personal-dashboard --host 0.0.0.0 --port 9120
 ```
 
 Check the install:
