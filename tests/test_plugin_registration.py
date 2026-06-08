@@ -137,7 +137,7 @@ class PluginRegistrationTest(unittest.TestCase):
         message = self.ctx.commands["personal-dashboard"]["handler"]("create-jobs")
         self.assertIn("Auto updates were not installed.", message)
         self.assertIn("scheduled Hermes curator jobs", message)
-        self.assertIn("Personal Dashboard Morning Briefing", message)
+        self.assertIn("Personal Dashboard Daily Briefing", message)
 
     def test_slash_create_jobs_explains_schedule_not_immediate_run(self) -> None:
         old_cron = sys.modules.get("cron")
@@ -161,11 +161,41 @@ class PluginRegistrationTest(unittest.TestCase):
 
         self.assertEqual(len(FakeJobs.calls), 3)
         self.assertIn("Auto updates installed: created 3 scheduled Hermes curator job(s).", message)
-        self.assertIn("Personal Dashboard Morning Briefing: daily at 07:30 local time", message)
-        self.assertIn("Personal Dashboard Alerts Refresh: hourly", message)
-        self.assertIn("Personal Dashboard Weekend Planner: Fridays at 15:00 local time", message)
+        self.assertIn("Personal Dashboard Daily Briefing: daily at 07:30 local time", message)
+        self.assertIn("Personal Dashboard Frequent Signal Refresh: hourly", message)
+        self.assertIn("Personal Dashboard Planning Refresh: Fridays at 15:00 local time", message)
         self.assertIn("Immediate scan completed.", message)
         self.assertIn("job creation does not execute the curator immediately", message)
+
+    def test_slash_create_jobs_accepts_schedule_overrides(self) -> None:
+        old_cron = sys.modules.get("cron")
+
+        class FakeJobs:
+            calls = []
+
+            @classmethod
+            def create_job(cls, **kwargs):
+                cls.calls.append(kwargs)
+                return {"id": f"job-{len(cls.calls)}"}
+
+        sys.modules["cron"] = types.SimpleNamespace(jobs=FakeJobs)
+        try:
+            message = self.ctx.commands["personal-dashboard"]["handler"](
+                "create-jobs daily=09:00 frequent=30m planning=mon@16:00 force"
+            )
+        finally:
+            if old_cron is None:
+                sys.modules.pop("cron", None)
+            else:
+                sys.modules["cron"] = old_cron
+
+        schedules = {call["name"]: call["schedule"] for call in FakeJobs.calls}
+        self.assertEqual(schedules["Personal Dashboard Daily Briefing"], "0 9 * * *")
+        self.assertEqual(schedules["Personal Dashboard Frequent Signal Refresh"], "every 30m")
+        self.assertEqual(schedules["Personal Dashboard Planning Refresh"], "0 16 * * 1")
+        self.assertIn("daily at 09:00 local time", message)
+        self.assertIn("every 30 minutes", message)
+        self.assertIn("Mondays at 16:00 local time", message)
 
 
 if __name__ == "__main__":

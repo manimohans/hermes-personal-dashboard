@@ -43,8 +43,9 @@ Prefer high-signal cards that explain what matters now:
 - `now`: urgent alerts, weather warnings, threshold breaches, schedule conflicts,
   time-sensitive reminders, breaking updates.
 - `today`: daily briefings, family/school/menu updates, news summaries, calendar
-  items, morning context.
-- `week`: weekend plans, upcoming games, events, travel, deadlines.
+  items, and other same-day context.
+- `week`: plans, upcoming games, events, travel, deadlines, and other future
+  context.
 - `watching`: stocks, teams, projects, GitHub issues, recurring beats, interests
   Hermes has learned are relevant.
 
@@ -67,7 +68,7 @@ Every visible card should include:
   "id": "news-ai-briefing",
   "domain": "news",
   "title": "AI news briefing",
-  "summary": "Three high-signal AI updates are worth showing this morning.",
+  "summary": "Three high-signal AI updates are worth showing today.",
   "priority": "medium",
   "status": "active",
   "valid_until": "2026-06-08T15:00:00Z",
@@ -87,7 +88,7 @@ At the start:
 
 ```json
 {
-  "job_key": "autonomous-morning-briefing",
+  "job_key": "autonomous-daily-briefing",
   "status": "running",
   "summary": "Refreshing dashboard from Hermes context."
 }
@@ -97,7 +98,7 @@ At the end:
 
 ```json
 {
-  "job_key": "autonomous-morning-briefing",
+  "job_key": "autonomous-daily-briefing",
   "status": "success",
   "summary": "Updated dashboard cards from inferred Hermes context."
 }
@@ -135,7 +136,7 @@ On failure, record the failed source instead of silently skipping it:
 
 ## Suggested Job Prompts
 
-Morning briefing:
+Daily briefing:
 
 ```text
 Use hermes-personal-dashboard:briefing-curator. Refresh the Personal Dashboard
@@ -144,7 +145,7 @@ ask the user to configure interests. Update cards and record the refresh result.
 Do not show raw scanner output as cards.
 ```
 
-Alerts:
+Frequent signal refresh:
 
 ```text
 Use hermes-personal-dashboard:briefing-curator. Refresh time-sensitive dashboard
@@ -152,9 +153,9 @@ alerts from inferred Hermes context. Update existing cards where possible and
 record the refresh result.
 ```
 
-Weekend planner:
+Planning refresh:
 
 ```text
-Use hermes-personal-dashboard:briefing-curator. Refresh weekend and planning
-cards from whatever Hermes already knows is relevant. Record the refresh result.
+Use hermes-personal-dashboard:briefing-curator. Refresh planning cards from
+whatever Hermes already knows is relevant. Record the refresh result.
 ```

@@ -23,6 +23,22 @@ import personal_dashboard_core as core  # noqa: E402
 
 
 API_PREFIX = "/api/plugins/hermes-personal-dashboard"
+DAY_NUMBERS = {
+    "sun": 0,
+    "sunday": 0,
+    "mon": 1,
+    "monday": 1,
+    "tue": 2,
+    "tuesday": 2,
+    "wed": 3,
+    "wednesday": 3,
+    "thu": 4,
+    "thursday": 4,
+    "fri": 5,
+    "friday": 5,
+    "sat": 6,
+    "saturday": 6,
+}
 
 
 def cron_prompt(kind: str) -> str:
@@ -37,11 +53,11 @@ def cron_prompt(kind: str) -> str:
         "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
-        return f"{base} Produce the autonomous morning dashboard refresh."
+        return f"{base} Produce the autonomous daily dashboard refresh."
     if kind == "alerts":
         return f"{base} Refresh time-sensitive cards inferred from Hermes context."
     if kind == "weekend":
-        return f"{base} Produce a weekend/planning refresh from whatever Hermes already knows is relevant."
+        return f"{base} Produce a periodic planning refresh from whatever Hermes already knows is relevant."
     return base
 
 
@@ -69,10 +85,76 @@ def alert_schedule(value: Any) -> str:
     return "every 1h"
 
 
-def job_specs(prefs: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, str]]:
+def day_number(value: Any) -> int:
+    text = str(value or "fri").strip().lower()
+    if text.isdigit():
+        return max(0, min(6, int(text)))
+    return DAY_NUMBERS.get(text, 5)
+
+
+def day_label(value: Any) -> str:
+    labels = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"]
+    return labels[day_number(value)]
+
+
+def schedule_overrides_from_body(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     body = body or {}
-    briefing_time = str(prefs.get("briefing_time") or body.get("briefing_time") or "07:30")
-    alert_frequency = str(prefs.get("alert_frequency") or body.get("alert_frequency") or "hourly").strip().lower()
+    aliases = {
+        "daily": "daily_time",
+        "daily_time": "daily_time",
+        "time": "daily_time",
+        "briefing_time": "daily_time",
+        "frequent": "frequent_refresh",
+        "signals": "frequent_refresh",
+        "alerts": "frequent_refresh",
+        "alert_frequency": "frequent_refresh",
+        "frequent_refresh": "frequent_refresh",
+        "planning_day": "planning_day",
+        "weekly_day": "planning_day",
+        "planning_time": "planning_time",
+        "weekly_time": "planning_time",
+    }
+    overrides = {
+        target: body[key]
+        for key, target in aliases.items()
+        if key in body and body[key] is not None and body[key] != ""
+    }
+    planning = str(body.get("planning") or body.get("weekly") or "").strip()
+    if "@" in planning:
+        day, time = planning.split("@", 1)
+        overrides["planning_day"] = day
+        overrides["planning_time"] = time
+    return overrides
+
+
+def persist_schedule_overrides(overrides: Dict[str, Any]) -> None:
+    values = {
+        key: value
+        for key, value in overrides.items()
+        if key in {"daily_time", "frequent_refresh", "planning_day", "planning_time"}
+    }
+    if values:
+        core.put_preferences(values)
+
+
+def job_specs(prefs: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, str]]:
+    overrides = schedule_overrides_from_body(body)
+    briefing_time = str(
+        overrides.get("daily_time")
+        or prefs.get("daily_time")
+        or prefs.get("daily_refresh_time")
+        or prefs.get("briefing_time")
+        or "07:30"
+    )
+    alert_frequency = str(
+        overrides.get("frequent_refresh")
+        or prefs.get("frequent_refresh")
+        or prefs.get("frequent_refresh_interval")
+        or prefs.get("alert_frequency")
+        or "hourly"
+    ).strip().lower()
+    planning_day = overrides.get("planning_day") or prefs.get("planning_day") or "fri"
+    planning_time = str(overrides.get("planning_time") or prefs.get("planning_time") or "15:00")
     if alert_frequency in {"15m", "every-15-min", "every 15m"}:
         alert_cadence = "every 15 minutes"
     elif alert_frequency in {"30m", "every-30-min", "every 30m"}:
@@ -81,24 +163,26 @@ def job_specs(prefs: Dict[str, Any], body: Optional[Dict[str, Any]] = None) -> D
         alert_cadence = "daily at 12:00 local time"
     else:
         alert_cadence = "hourly"
+    planning_schedule = parse_hhmm(planning_time)
+    planning_minute, planning_hour = planning_schedule.split()[:2]
     return {
         "morning": {
-            "name": "Personal Dashboard Morning Briefing",
+            "name": "Personal Dashboard Daily Briefing",
             "schedule": parse_hhmm(briefing_time),
             "cadence": f"daily at {briefing_time} local time",
-            "purpose": "turn morning-relevant Hermes context into briefing cards",
+            "purpose": "turn daily-relevant Hermes context into briefing cards",
         },
         "alerts": {
-            "name": "Personal Dashboard Alerts Refresh",
+            "name": "Personal Dashboard Frequent Signal Refresh",
             "schedule": alert_schedule(alert_frequency),
             "cadence": alert_cadence,
             "purpose": "refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts",
         },
         "weekend": {
-            "name": "Personal Dashboard Weekend Planner",
-            "schedule": "0 15 * * 5",
-            "cadence": "Fridays at 15:00 local time",
-            "purpose": "prepare weekend and planning cards from Hermes context",
+            "name": "Personal Dashboard Planning Refresh",
+            "schedule": f"{planning_minute} {planning_hour} * * {day_number(planning_day)}",
+            "cadence": f"{day_label(planning_day)} at {planning_time} local time",
+            "purpose": "prepare planning cards from Hermes context",
         },
     }
 
@@ -117,6 +201,7 @@ def jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any], body: Optional[
 
 def create_standard_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     body = body or {}
+    persist_schedule_overrides(schedule_overrides_from_body(body))
     prefs = core.get_preferences()
     existing = prefs.get("cron_jobs") or {}
     if existing and not body.get("force"):

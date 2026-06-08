@@ -4,6 +4,7 @@ import importlib.util
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -117,6 +118,37 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(snapshot.status_code, 200)
         self.assertEqual(len(snapshot.json()["refresh_runs"]), 1)
         self.assertFalse(snapshot.json()["status"]["requires_configuration"])
+
+    def test_ensure_jobs_route_accepts_schedule_overrides(self) -> None:
+        old_cron = sys.modules.get("cron")
+
+        class FakeJobs:
+            calls = []
+
+            @classmethod
+            def create_job(cls, **kwargs):
+                cls.calls.append(kwargs)
+                return {"id": f"job-{len(cls.calls)}"}
+
+        sys.modules["cron"] = types.SimpleNamespace(jobs=FakeJobs)
+        try:
+            response = self.client.post(
+                "/automation/ensure-jobs",
+                json={"daily_time": "09:00", "frequent_refresh": "30m", "planning": "mon@16:00", "force": True},
+            )
+        finally:
+            if old_cron is None:
+                sys.modules.pop("cron", None)
+            else:
+                sys.modules["cron"] = old_cron
+
+        self.assertEqual(response.status_code, 200)
+        schedules = {call["name"]: call["schedule"] for call in FakeJobs.calls}
+        self.assertEqual(schedules["Personal Dashboard Daily Briefing"], "0 9 * * *")
+        self.assertEqual(schedules["Personal Dashboard Frequent Signal Refresh"], "every 30m")
+        self.assertEqual(schedules["Personal Dashboard Planning Refresh"], "0 16 * * 1")
+        jobs = response.json()["jobs"]
+        self.assertIn("daily at 09:00 local time", [job["cadence"] for job in jobs])
 
 
 if __name__ == "__main__":

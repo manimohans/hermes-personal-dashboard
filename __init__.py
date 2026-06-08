@@ -4,10 +4,27 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from . import personal_dashboard_core as core
 from . import schemas
+
+DAY_NUMBERS = {
+    "sun": 0,
+    "sunday": 0,
+    "mon": 1,
+    "monday": 1,
+    "tue": 2,
+    "tuesday": 2,
+    "wed": 3,
+    "wednesday": 3,
+    "thu": 4,
+    "thursday": 4,
+    "fri": 5,
+    "friday": 5,
+    "sat": 6,
+    "saturday": 6,
+}
 
 
 def _cron_prompt(kind: str) -> str:
@@ -22,19 +39,19 @@ def _cron_prompt(kind: str) -> str:
         "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
     )
     if kind == "morning":
-        return f"{base} Produce the autonomous morning dashboard refresh."
+        return f"{base} Produce the autonomous daily dashboard refresh."
     if kind == "alerts":
         return f"{base} Refresh time-sensitive cards such as weather, stocks, sports, news, calendar, family, project, and alert items inferred from Hermes context."
     if kind == "weekend":
-        return f"{base} Produce a weekend/planning refresh from whatever Hermes already knows is relevant."
+        return f"{base} Produce a periodic planning refresh from whatever Hermes already knows is relevant."
     return base
 
 
 def _cron_name(kind: str) -> str:
     return {
-        "morning": "Personal Dashboard Morning Briefing",
-        "alerts": "Personal Dashboard Alerts Refresh",
-        "weekend": "Personal Dashboard Weekend Planner",
+        "morning": "Personal Dashboard Daily Briefing",
+        "alerts": "Personal Dashboard Frequent Signal Refresh",
+        "weekend": "Personal Dashboard Planning Refresh",
     }.get(kind, f"Personal Dashboard {kind.title()}")
 
 
@@ -62,9 +79,39 @@ def _alert_schedule(value: Any) -> str:
     return "every 1h"
 
 
-def _job_specs(prefs: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
-    briefing_time = str(prefs.get("briefing_time") or "07:30")
-    alert_frequency = str(prefs.get("alert_frequency") or "hourly").strip().lower()
+def _day_number(value: Any) -> int:
+    text = str(value or "fri").strip().lower()
+    if text.isdigit():
+        return max(0, min(6, int(text)))
+    return DAY_NUMBERS.get(text, 5)
+
+
+def _day_label(value: Any) -> str:
+    number = _day_number(value)
+    labels = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"]
+    return labels[number]
+
+
+def _job_specs(prefs: Dict[str, Any], overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, str]]:
+    overrides = overrides or {}
+    briefing_time = str(
+        overrides.get("daily_time")
+        or overrides.get("briefing_time")
+        or prefs.get("daily_time")
+        or prefs.get("daily_refresh_time")
+        or prefs.get("briefing_time")
+        or "07:30"
+    )
+    alert_frequency = str(
+        overrides.get("frequent_refresh")
+        or overrides.get("alert_frequency")
+        or prefs.get("frequent_refresh")
+        or prefs.get("frequent_refresh_interval")
+        or prefs.get("alert_frequency")
+        or "hourly"
+    ).strip().lower()
+    planning_day = overrides.get("planning_day") or prefs.get("planning_day") or "fri"
+    planning_time = str(overrides.get("planning_time") or prefs.get("planning_time") or "15:00")
     if alert_frequency in {"15m", "every-15-min", "every 15m"}:
         alert_cadence = "every 15 minutes"
     elif alert_frequency in {"30m", "every-30-min", "every 30m"}:
@@ -73,12 +120,14 @@ def _job_specs(prefs: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
         alert_cadence = "daily at 12:00 local time"
     else:
         alert_cadence = "hourly"
+    planning_schedule = _parse_hhmm(planning_time)
+    planning_minute, planning_hour = planning_schedule.split()[:2]
     return {
         "morning": {
             "name": _cron_name("morning"),
             "schedule": _parse_hhmm(briefing_time),
             "cadence": f"daily at {briefing_time} local time",
-            "purpose": "turn morning-relevant Hermes context into briefing cards",
+            "purpose": "turn daily-relevant Hermes context into briefing cards",
         },
         "alerts": {
             "name": _cron_name("alerts"),
@@ -88,15 +137,15 @@ def _job_specs(prefs: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
         },
         "weekend": {
             "name": _cron_name("weekend"),
-            "schedule": "0 15 * * 5",
-            "cadence": "Fridays at 15:00 local time",
-            "purpose": "prepare weekend and planning cards from Hermes context",
+            "schedule": f"{planning_minute} {planning_hour} * * {_day_number(planning_day)}",
+            "cadence": f"{_day_label(planning_day)} at {planning_time} local time",
+            "purpose": "prepare planning cards from Hermes context",
         },
     }
 
 
-def _jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any]) -> list[Dict[str, Any]]:
-    specs = _job_specs(prefs)
+def _jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any], overrides: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]]:
+    specs = _job_specs(prefs, overrides)
     rows = []
     for kind in ("morning", "alerts", "weekend"):
         spec = dict(specs[kind])
@@ -107,11 +156,23 @@ def _jobs_payload(prefs: Dict[str, Any], job_ids: Dict[str, Any]) -> list[Dict[s
     return rows
 
 
-def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
+def _persist_schedule_overrides(overrides: Dict[str, Any]) -> None:
+    values = {
+        key: value
+        for key, value in overrides.items()
+        if key in {"daily_time", "frequent_refresh", "planning_day", "planning_time"}
+    }
+    if values:
+        core.put_preferences(values)
+
+
+def _create_standard_cron_jobs(force: bool = False, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    overrides = overrides or {}
+    _persist_schedule_overrides(overrides)
     prefs = core.get_preferences()
     existing = prefs.get("cron_jobs") or {}
     if existing and not force:
-        return {"created": [], "existing": existing, "skipped": True, "jobs": _jobs_payload(prefs, existing)}
+        return {"created": [], "existing": existing, "skipped": True, "jobs": _jobs_payload(prefs, existing, overrides)}
 
     try:
         from cron import jobs as cron_jobs
@@ -123,10 +184,10 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
             "skipped": True,
             "error": f"cron integration unavailable: {exc}",
             "next_step": "Run `/personal-dashboard create-jobs` inside Hermes where the cron runtime is available.",
-            "jobs": _jobs_payload(prefs, existing),
+            "jobs": _jobs_payload(prefs, existing, overrides),
         }
 
-    specs = _job_specs(prefs)
+    specs = _job_specs(prefs, overrides)
     created = []
     cron_job_ids: Dict[str, str] = {}
     for kind in ("morning", "alerts", "weekend"):
@@ -143,7 +204,7 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
             cron_job_ids[kind] = str(job["id"])
 
     core.put_preferences({"cron_jobs": cron_job_ids})
-    return {"created": created, "existing": {}, "skipped": False, "jobs": _jobs_payload(prefs, cron_job_ids)}
+    return {"created": created, "existing": {}, "skipped": False, "jobs": _jobs_payload(prefs, cron_job_ids, overrides)}
 
 
 def _ok(payload: Any) -> str:
@@ -222,8 +283,55 @@ def _handle_get_snapshot(params: Dict[str, Any]) -> Any:
     return core.dashboard_snapshot(auto_refresh=True if auto_refresh is None else bool(auto_refresh))
 
 
+def _schedule_overrides_from_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    aliases = {
+        "daily": "daily_time",
+        "daily_time": "daily_time",
+        "time": "daily_time",
+        "briefing_time": "daily_time",
+        "frequent": "frequent_refresh",
+        "signals": "frequent_refresh",
+        "alerts": "frequent_refresh",
+        "alert_frequency": "frequent_refresh",
+        "frequent_refresh": "frequent_refresh",
+        "planning_day": "planning_day",
+        "weekly_day": "planning_day",
+        "planning_time": "planning_time",
+        "weekly_time": "planning_time",
+    }
+    overrides: Dict[str, Any] = {}
+    for key, value in (params or {}).items():
+        if key in aliases and value is not None and value != "":
+            overrides[aliases[key]] = value
+    planning = str((params or {}).get("planning") or (params or {}).get("weekly") or "").strip()
+    if "@" in planning:
+        day, time = planning.split("@", 1)
+        overrides["planning_day"] = day
+        overrides["planning_time"] = time
+    return overrides
+
+
+def _parse_create_jobs_args(tokens: list[str]) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    for token in tokens:
+        text = token.strip()
+        if not text:
+            continue
+        if text in {"force", "--force"}:
+            params["force"] = True
+            continue
+        if "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        params[key.strip().lower().replace("-", "_")] = value.strip()
+    return params
+
+
 def _handle_create_cron_jobs(params: Dict[str, Any]) -> Any:
-    return _create_standard_cron_jobs(force=bool(params.get("force", False)))
+    return _create_standard_cron_jobs(
+        force=bool(params.get("force", False)),
+        overrides=_schedule_overrides_from_params(params),
+    )
 
 
 def _format_job_lines(jobs: Any) -> str:
@@ -274,6 +382,9 @@ Subcommands:
 Open the visual dashboard from `hermes dashboard` at the Personal Dashboard tab.
 No setup is required. The dashboard reflects what Hermes already knows from memory,
 session history, cron output, and prior agent work.
+
+Schedule overrides are optional:
+  /personal-dashboard create-jobs daily=09:00 frequent=30m planning=mon@16:00 force
 """
 
 
@@ -323,13 +434,22 @@ def _handle_slash(raw_args: str) -> str:
                 lines.append(f"  - {item['domain']}: {item['label']}")
             return "\n".join(lines)
         if sub in {"create-jobs", "jobs"}:
-            result = _create_standard_cron_jobs(force=False)
+            params = _parse_create_jobs_args(argv[1:])
+            schedule_hint = (
+                "Schedule hint: these are starter defaults. Change them with "
+                "`/personal-dashboard create-jobs daily=09:00 frequent=30m planning=mon@16:00 force`."
+            )
+            result = _create_standard_cron_jobs(
+                force=bool(params.get("force", False)),
+                overrides=_schedule_overrides_from_params(params),
+            )
             jobs = _format_job_lines(result.get("jobs"))
             if result.get("error"):
                 return (
                     "Auto updates were not installed.\n"
                     "Tried to create these scheduled Hermes curator jobs:\n"
                     f"{jobs}\n"
+                    f"  {schedule_hint}\n"
                     f"  error: {result['error']}\n"
                     f"  next: {result.get('next_step') or 'Run this command inside Hermes.'}"
                 )
@@ -345,11 +465,13 @@ def _handle_slash(raw_args: str) -> str:
                 return (
                     "Auto updates were already installed.\n"
                     f"{jobs}\n\n"
+                    f"{schedule_hint}\n\n"
                     f"{scan_lines}"
                 )
             return (
                 f"Auto updates installed: created {len(result.get('created') or [])} scheduled Hermes curator job(s).\n"
                 f"{jobs}\n\n"
+                f"{schedule_hint}\n\n"
                 f"{scan_lines}"
             )
         return f"Unknown subcommand: {sub}\n\n{_HELP}"

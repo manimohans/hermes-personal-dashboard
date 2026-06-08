@@ -195,14 +195,21 @@ Install auto updates, when running with Hermes plugin support:
 /personal-dashboard create-jobs
 ```
 
-That command installs three scheduled Hermes curator jobs. It does not execute
-those jobs at install time.
+That command installs three scheduled Hermes curator jobs using starter defaults.
+Those defaults are not personal assumptions and are not required. Any user can
+set a different cadence in the same command, without a setup wizard:
+
+```bash
+/personal-dashboard create-jobs daily=09:00 frequent=30m planning=mon@16:00 force
+```
+
+It does not execute those jobs at install time.
 
 | Job | When it runs | What it does |
 | --- | --- | --- |
-| Personal Dashboard Morning Briefing | daily at `07:30` local time | turns morning-relevant Hermes context into briefing cards |
-| Personal Dashboard Alerts Refresh | hourly by default | refreshes time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts |
-| Personal Dashboard Weekend Planner | Fridays at `15:00` local time | prepares weekend and planning cards from Hermes context |
+| Personal Dashboard Daily Briefing | default: daily at `07:30` local time; override with `daily=HH:MM` | turns daily-relevant Hermes context into briefing cards |
+| Personal Dashboard Frequent Signal Refresh | default: hourly; override with `frequent=15m`, `frequent=30m`, `frequent=hourly`, or `frequent=daily` | refreshes time-sensitive cards such as weather, stocks, sports, news, calendar, family, projects, and alerts |
+| Personal Dashboard Planning Refresh | default: Friday at `15:00` local time; override with `planning=day@HH:MM` | prepares planning cards from Hermes context |
 
 After installing jobs, the command also performs an immediate deterministic
 scan of Hermes sources so the dashboard can show inferred signals right away.
@@ -250,7 +257,7 @@ The standalone dashboard includes correction controls, not setup controls:
 
 - **Refresh**: reload the snapshot
 - **Scan Hermes signals**: read Hermes memory, sessions, and cron output once; this finds relevance signals but does not itself create final cards
-- **Install auto updates**: ask Hermes to create scheduled curator jobs for the morning brief, time-sensitive alerts, and weekend planner; if the standalone server cannot reach Hermes cron, the dashboard shows the exact failure and the next command to run inside Hermes
+- **Install auto updates**: ask Hermes to create scheduled curator jobs for daily briefing, frequent signal refresh, and planning; if the standalone server cannot reach Hermes cron, the dashboard shows the exact failure and the next command to run inside Hermes
 - **Pin / Unpin**: keep a card visible
 - **Dismiss**: hide a card
 - **Hide** on inferred context: stop showing that inferred item

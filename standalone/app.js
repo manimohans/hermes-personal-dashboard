@@ -208,7 +208,7 @@
       check: "Auto updates not installed",
       disabled: false,
       title: "Install auto updates",
-      detail: "One-time action: asks Hermes to create scheduled curator jobs for the morning brief, time-sensitive alerts, and weekend planner."
+      detail: "One-time action: creates daily, frequent-signal, and planning curator jobs in Hermes. To use a different cadence, run /personal-dashboard create-jobs daily=09:00 frequent=30m planning=mon@16:00 force in Hermes."
     };
   }
 
@@ -310,11 +310,13 @@
       .then(function (result) {
         state.error = "";
         var jobLines = formatJobLines(result.jobs);
+        var scheduleHint = "These are starter defaults. To change cadence, run /personal-dashboard create-jobs daily=09:00 frequent=30m planning=mon@16:00 force in Hermes.";
         if (result.error) {
           state.notice = [
             "Auto updates were not installed.",
             "Tried to create these scheduled Hermes curator jobs:",
             jobLines,
+            scheduleHint,
             result.error,
             result.next_step || "Run /personal-dashboard create-jobs inside Hermes."
           ].join("\n");
@@ -322,6 +324,7 @@
           state.notice = [
             "Auto updates are already installed.",
             jobLines,
+            scheduleHint,
             "These are scheduled jobs. Installing them does not run the curator immediately; cards update when Hermes runs them."
           ].join("\n");
         } else {
@@ -330,6 +333,7 @@
             "Auto updates installed.",
             "Created " + createdCount + " scheduled Hermes curator " + (createdCount === 1 ? "job" : "jobs") + ".",
             jobLines,
+            scheduleHint,
             "Installing jobs does not run the curator immediately. Cards update after Hermes runs them."
           ].join("\n");
         }

@@ -194,11 +194,16 @@ PERSONAL_DASHBOARD_GET_PREFERENCES = {
 
 PERSONAL_DASHBOARD_CREATE_CRON_JOBS = {
     "name": "personal_dashboard_create_cron_jobs",
-    "description": "Install scheduled Personal Dashboard Hermes curator jobs. This schedules morning, alert, and weekend jobs; it does not run the curator immediately.",
+    "description": "Install scheduled Personal Dashboard Hermes curator jobs. This schedules daily, frequent-signal, and planning jobs; it does not run the curator immediately.",
     "parameters": {
         "type": "object",
         "properties": {
             "force": {"type": "boolean", "description": "Create replacement jobs even if job ids are already stored."},
+            "daily_time": {"type": "string", "description": "Optional local HH:MM time for the daily briefing job, for example 09:00."},
+            "frequent_refresh": {"type": "string", "description": "Optional frequent refresh cadence: 15m, 30m, hourly, or daily."},
+            "planning": {"type": "string", "description": "Optional planning cadence as day@HH:MM, for example mon@16:00."},
+            "planning_day": {"type": "string", "description": "Optional planning refresh day, for example mon or friday."},
+            "planning_time": {"type": "string", "description": "Optional local HH:MM time for the planning refresh."},
         },
     },
 }
