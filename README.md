@@ -25,6 +25,19 @@ The dashboard groups useful Hermes-derived cards into:
 
 Every card should show freshness and provenance when Hermes has it.
 
+Cards should show the actual user-facing data, not the fact that a source or
+cron job exists. Examples:
+
+- AI news cards should show AI news items.
+- Calendar cards should show events or important schedule context.
+- Email cards should show important messages or counts worth acting on.
+- Weather cards should show current conditions and relevant forecast.
+- Sensor cards should show the actual reading.
+- Sports cards should show fixtures, scores, standings, or news.
+
+Source health, authentication status, prompt rules, and cron details belong in
+card details or the collapsed **Details** rail, not as primary cards.
+
 ## The Important Difference
 
 This is not a configuration flow.

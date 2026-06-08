@@ -315,6 +315,144 @@
     return null;
   }
 
+  function humanLabel(value) {
+    return String(value || "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
+  }
+
+  function displayValue(value, suffix) {
+    if (value === null || value === undefined || value === "") return "";
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return (Math.round(value * 10) / 10) + (suffix || "");
+    }
+    return String(value) + (suffix || "");
+  }
+
+  function dataMetric(label, value, suffix) {
+    var shown = displayValue(value, suffix);
+    if (!shown) return null;
+    return el("div", { className: "hpd-data-metric" },
+      el("span", { text: label }),
+      el("strong", { text: shown })
+    );
+  }
+
+  function appendMetric(metrics, metric) {
+    if (!metric) return;
+    if (Array.isArray(metric)) {
+      metrics.push(dataMetric(metric[0], metric[1], metric[2]));
+      return;
+    }
+    if (typeof metric === "object") {
+      metrics.push(dataMetric(metric.label || metric.name || "Metric", metric.value, metric.unit || metric.suffix));
+    }
+  }
+
+  function appendMetricObject(metrics, value) {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(function (metric) { appendMetric(metrics, metric); });
+      return;
+    }
+    if (typeof value === "object") {
+      Object.keys(value).forEach(function (key) {
+        metrics.push(dataMetric(humanLabel(key), value[key]));
+      });
+    }
+  }
+
+  function itemTitle(item) {
+    if (typeof item === "string") return item;
+    return item.title || item.subject || item.name || item.label || item.summary || "Item";
+  }
+
+  function itemSummary(item) {
+    if (typeof item === "string") return "";
+    return item.summary || item.description || item.snippet || item.detail || item.status || "";
+  }
+
+  function itemMeta(item) {
+    if (typeof item === "string") return "";
+    return [item.source, item.source_label, item.time, item.start, item.date, item.when]
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" - ");
+  }
+
+  function dataList(label, items) {
+    if (!Array.isArray(items) || !items.length) return null;
+    return el("div", { className: "hpd-data-list" },
+      el("span", { className: "hpd-data-label", text: label }),
+      items.slice(0, 5).map(function (item) {
+        var title = itemTitle(item);
+        var summary = itemSummary(item);
+        var meta = itemMeta(item);
+        var url = typeof item === "object" && item ? (item.url || item.source_url || item.link) : "";
+        return el("div", { className: "hpd-data-item" },
+          url ? el("a", { href: url, target: "_blank", rel: "noreferrer", text: title }) : el("strong", { text: title }),
+          summary && summary !== title ? el("p", { text: summary }) : null,
+          meta ? el("small", { text: meta }) : null
+        );
+      })
+    );
+  }
+
+  function structuredData(card) {
+    var payload = card.payload || {};
+    var nodes = [];
+    var metrics = [];
+    appendMetricObject(metrics, payload.metrics);
+    appendMetricObject(metrics, payload.readings);
+    var observed = payload.observed || payload.current || null;
+    if (observed && typeof observed === "object" && !Array.isArray(observed)) {
+      metrics.push(dataMetric("Condition", observed.condition));
+      metrics.push(dataMetric("Temp", observed.temp_F, "F"));
+      metrics.push(dataMetric("Feels", observed.feels_like_F, "F"));
+      metrics.push(dataMetric("Humidity", observed.humidity_pct, "%"));
+      metrics.push(dataMetric("Wind", observed.wind_mph, " mph"));
+      metrics.push(dataMetric("AQI", observed.aqi));
+    }
+    metrics.push(dataMetric("Machine Temp", payload.thermal_zone0_c, "C"));
+    metrics.push(dataMetric("Current Temp", payload.current_temp_c, "C"));
+    metrics.push(dataMetric("Current Temp", payload.current_temp_f, "F"));
+    metrics.push(dataMetric("Unread", payload.unread_count));
+    metrics.push(dataMetric("Events", payload.calendar_events_seen));
+    metrics = metrics.filter(Boolean);
+    if (metrics.length) {
+      nodes.push(el("div", { className: "hpd-data-grid" }, metrics));
+    }
+
+    if (Array.isArray(payload.sections)) {
+      payload.sections.forEach(function (section) {
+        if (!section || typeof section !== "object") return;
+        var list = dataList(section.label || section.title || "Items", section.items || section.rows || section.entries);
+        if (list) nodes.push(list);
+      });
+    }
+    if (payload.lists && typeof payload.lists === "object" && !Array.isArray(payload.lists)) {
+      Object.keys(payload.lists).forEach(function (key) {
+        var list = dataList(humanLabel(key), payload.lists[key]);
+        if (list) nodes.push(list);
+      });
+    }
+
+    [
+      ["News", payload.news_items || payload.headlines || payload.stories || payload.items],
+      ["Calendar", payload.calendar_events || payload.events],
+      ["Email", payload.email_items || payload.emails],
+      ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
+      ["Sports", payload.fixtures || payload.games || payload.scores],
+      ["Stocks", payload.tickers || payload.positions || payload.alerts]
+    ].forEach(function (group) {
+      var list = dataList(group[0], group[1]);
+      if (list) nodes.push(list);
+    });
+
+    if (!nodes.length) return null;
+    return el("div", { className: "hpd-data" }, nodes);
+  }
+
   function syncStatus(snapshot) {
     var running = runningRefresh(snapshot);
     var title = "";
@@ -437,6 +575,7 @@
     var isPinned = Boolean(card.pinned) || card.status === "pinned";
     var expanded = Boolean(state.expandedCards[card.id]);
     var hasDetail = Boolean(card.detail_md || card.why_shown);
+    var dataView = structuredData(card);
     return el("article", { className: cx("hpd-card", card.status === "stale" && "is-stale") },
       el("div", { className: "hpd-card-top" },
         el("div", { className: "hpd-card-title-block" },
@@ -449,6 +588,7 @@
           card.status !== "active" ? badge(card.status || "active") : null
         )
       ),
+      dataView,
       el("p", { className: "hpd-summary", text: card.summary || "" }),
       expanded ? el("div", { className: "hpd-card-expanded" },
         card.why_shown ? el("p", { className: "hpd-why", text: card.why_shown }) : null,

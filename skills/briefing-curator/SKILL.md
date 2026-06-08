@@ -34,6 +34,9 @@ cards.
 - A visible card must answer at least one user-facing question: what matters
   now, what is happening today, what is coming up, what changed, or what needs
   action.
+- Adapt the wording, density, tone, and formatting to the user's Hermes memory,
+  profile, and prior correction history. Do not create a card about those style
+  preferences; apply them silently.
 - Use `personal_dashboard_upsert_context` when you discover a durable relevance
   signal from Hermes context that the deterministic scanner missed.
 - Adjust existing cards with `personal_dashboard_patch_card` when only status,
@@ -81,6 +84,27 @@ Every visible card should include:
 - optional `payload.relevance_score` from `0` to `150` when the card should
   rank higher or lower than priority/freshness alone
 
+Prefer structured user-facing data in `payload` so the dashboard can render the
+actual content without knowing the user's domain in advance:
+
+- `payload.metrics`: object or list of `{label, value, unit}` readings.
+- `payload.items`: list of `{title, summary, url, source, time}` items.
+- `payload.sections`: list of `{label, items}` groups for multi-part cards.
+
+Domain-specific aliases are also supported when useful, such as
+`news_items`, `calendar_events`, `email_items`, `daycare_items`, `menu_items`,
+`fixtures`, `scores`, `tickers`, `observed`, and `readings`.
+
+The card title and summary should describe the data result, not the source job.
+For example:
+
+- Good: "Five AI stories worth reading this morning" with `payload.news_items`.
+- Bad: "AI news feed is fresh."
+- Good: "San Jose: 67F, low rain risk" with weather metrics.
+- Bad: "Weather job ran successfully."
+- Good: "Daycare: pasta lunch, nap note, art activity" with menu/daycare items.
+- Bad: "Daycare poll is active."
+
 ## Card Writing Pattern
 
 ```json
@@ -97,7 +121,16 @@ Every visible card should include:
   "payload": {
     "section": "today",
     "ai_curated": true,
-    "relevance_score": 40
+    "relevance_score": 40,
+    "items": [
+      {
+        "title": "Example story",
+        "summary": "Why it matters to this user.",
+        "url": "https://example.com/story",
+        "source": "Example Source",
+        "time": "2026-06-08T14:00:00Z"
+      }
+    ]
   }
 }
 ```

@@ -619,6 +619,89 @@
   margin: 0;
 }
 
+.hpd-data {
+  display: grid;
+  gap: 10px;
+}
+
+.hpd-data-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+}
+
+.hpd-data-metric {
+  background: rgba(248, 252, 255, 0.58);
+  border: 1px solid var(--hpd-line);
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 8px;
+}
+
+.hpd-data-metric span,
+.hpd-data-label,
+.hpd-data-item small {
+  color: var(--hpd-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.hpd-data-metric strong {
+  color: var(--hpd-blue-deep);
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.hpd-data-list {
+  border: 1px solid var(--hpd-line);
+  display: grid;
+  gap: 0;
+}
+
+.hpd-data-label {
+  background: rgba(248, 252, 255, 0.42);
+  border-bottom: 1px solid var(--hpd-line);
+  padding: 7px 9px;
+}
+
+.hpd-data-item {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+}
+
+.hpd-data-item + .hpd-data-item {
+  border-top: 1px solid var(--hpd-line);
+}
+
+.hpd-data-item strong,
+.hpd-data-item a {
+  color: var(--hpd-blue-deep);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.hpd-data-item a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hpd-data-item p {
+  color: var(--hpd-ink);
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0;
+}
+
 .hpd-card-expanded {
   display: grid;
   gap: 9px;

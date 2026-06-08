@@ -55,7 +55,9 @@ def _cron_prompt(kind: str) -> str:
         "cards with personal_dashboard_upsert_card and record the run "
         "with personal_dashboard_record_refresh. Show provenance and why each card was shown. Do not create "
         "visible cards merely saying a source is authenticated, a token exists, formatting rules are known, "
-        "a path/cadence is configured, or a topic is on a watchlist without fresh data."
+        "a path/cadence is configured, or a topic is on a watchlist without fresh data. The card title, "
+        "summary, and payload must show the actual user-facing data; use payload.metrics, payload.items, "
+        "or payload.sections for readings, feed items, events, emails, menus, fixtures, or other user data."
     )
     if kind == "morning":
         return f"{base} Produce the autonomous daily dashboard refresh."

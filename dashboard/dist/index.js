@@ -330,6 +330,142 @@
     );
   }
 
+  function displayValue(value, suffix) {
+    if (value === null || value === undefined || value === "") return "";
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return (Math.round(value * 10) / 10) + (suffix || "");
+    }
+    return String(value) + (suffix || "");
+  }
+
+  function humanLabel(value) {
+    return String(value || "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
+  }
+
+  function DataMetric(props) {
+    const shown = displayValue(props.value, props.suffix);
+    if (!shown) return null;
+    return h("div", { className: "hpd-data-metric" },
+      h("span", null, props.label),
+      h("strong", null, shown)
+    );
+  }
+
+  function appendMetric(metrics, metric) {
+    if (!metric) return;
+    if (Array.isArray(metric)) {
+      metrics.push([metric[0], metric[1], metric[2]]);
+      return;
+    }
+    if (typeof metric === "object") {
+      metrics.push([metric.label || metric.name || "Metric", metric.value, metric.unit || metric.suffix]);
+    }
+  }
+
+  function appendMetricObject(metrics, value) {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(function (metric) { appendMetric(metrics, metric); });
+      return;
+    }
+    if (typeof value === "object") {
+      Object.keys(value).forEach(function (key) {
+        metrics.push([humanLabel(key), value[key]]);
+      });
+    }
+  }
+
+  function itemTitle(item) {
+    if (typeof item === "string") return item;
+    return item.title || item.subject || item.name || item.label || item.summary || "Item";
+  }
+
+  function itemSummary(item) {
+    if (typeof item === "string") return "";
+    return item.summary || item.description || item.snippet || item.detail || item.status || "";
+  }
+
+  function itemMeta(item) {
+    if (typeof item === "string") return "";
+    return [item.source, item.source_label, item.time, item.start, item.date, item.when]
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" - ");
+  }
+
+  function DataList(props) {
+    const items = props.items;
+    if (!Array.isArray(items) || !items.length) return null;
+    return h("div", { className: "hpd-data-list" },
+      h("span", { className: "hpd-data-label" }, props.label),
+      items.slice(0, 5).map(function (item, index) {
+        const title = itemTitle(item);
+        const summary = itemSummary(item);
+        const meta = itemMeta(item);
+        const url = typeof item === "object" && item ? (item.url || item.source_url || item.link) : "";
+        return h("div", { key: index + ":" + title, className: "hpd-data-item" },
+          url ? h("a", { href: url, target: "_blank", rel: "noreferrer" }, title) : h("strong", null, title),
+          summary && summary !== title ? h("p", null, summary) : null,
+          meta ? h("small", null, meta) : null
+        );
+      })
+    );
+  }
+
+  function StructuredData(props) {
+    const payload = props.card.payload || {};
+    const observed = payload.observed || payload.current || null;
+    const metrics = [];
+    appendMetricObject(metrics, payload.metrics);
+    appendMetricObject(metrics, payload.readings);
+    if (observed && typeof observed === "object" && !Array.isArray(observed)) {
+      metrics.push(["Condition", observed.condition]);
+      metrics.push(["Temp", observed.temp_F, "F"]);
+      metrics.push(["Feels", observed.feels_like_F, "F"]);
+      metrics.push(["Humidity", observed.humidity_pct, "%"]);
+      metrics.push(["Wind", observed.wind_mph, " mph"]);
+      metrics.push(["AQI", observed.aqi]);
+    }
+    metrics.push(["Machine Temp", payload.thermal_zone0_c, "C"]);
+    metrics.push(["Current Temp", payload.current_temp_c, "C"]);
+    metrics.push(["Current Temp", payload.current_temp_f, "F"]);
+    metrics.push(["Unread", payload.unread_count]);
+    metrics.push(["Events", payload.calendar_events_seen]);
+    const metricNodes = metrics.map(function (metric) {
+      return h(DataMetric, { key: metric[0] + ":" + metric[1], label: metric[0], value: metric[1], suffix: metric[2] });
+    }).filter(Boolean);
+    const genericLists = [];
+    if (Array.isArray(payload.sections)) {
+      payload.sections.forEach(function (section) {
+        if (!section || typeof section !== "object") return;
+        genericLists.push([section.label || section.title || "Items", section.items || section.rows || section.entries]);
+      });
+    }
+    if (payload.lists && typeof payload.lists === "object" && !Array.isArray(payload.lists)) {
+      Object.keys(payload.lists).forEach(function (key) {
+        genericLists.push([humanLabel(key), payload.lists[key]]);
+      });
+    }
+    const lists = [
+      ...genericLists,
+      ["News", payload.news_items || payload.headlines || payload.stories || payload.items],
+      ["Calendar", payload.calendar_events || payload.events],
+      ["Email", payload.email_items || payload.emails],
+      ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
+      ["Sports", payload.fixtures || payload.games || payload.scores],
+      ["Stocks", payload.tickers || payload.positions || payload.alerts]
+    ].map(function (group) {
+      return h(DataList, { key: group[0], label: group[0], items: group[1] });
+    }).filter(Boolean);
+    if (!metricNodes.length && !lists.length) return null;
+    return h("div", { className: "hpd-data" },
+      metricNodes.length ? h("div", { className: "hpd-data-grid" }, metricNodes) : null,
+      lists
+    );
+  }
+
   function CardItem(props) {
     const card = props.card;
     const isPinned = Boolean(card.pinned) || card.status === "pinned";
@@ -347,6 +483,7 @@
           card.status !== "active" ? h(Badge, null, card.status) : null
         )
       ),
+      h(StructuredData, { card: card }),
       h("p", { className: "hpd-summary" }, card.summary),
       expanded ? h("div", { className: "hpd-card-expanded" },
         card.why_shown ? h("p", { className: "hpd-why" }, card.why_shown) : null,
