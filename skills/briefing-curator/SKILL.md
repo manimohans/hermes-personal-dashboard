@@ -27,6 +27,13 @@ cards.
 - Write useful visible cards with `personal_dashboard_upsert_card`.
 - Never turn raw scanner lines, prompts, cron schedules, persona text, or
   memory-write JSON into visible cards.
+- Do not create visible cards merely saying a source is authenticated, a token
+  exists, a formatting rule is known, a path/cadence is configured, or a topic is
+  on a watchlist without fresh data. Keep those facts as context, evidence, or
+  `why_shown`, not as dashboard cards.
+- A visible card must answer at least one user-facing question: what matters
+  now, what is happening today, what is coming up, what changed, or what needs
+  action.
 - Use `personal_dashboard_upsert_context` when you discover a durable relevance
   signal from Hermes context that the deterministic scanner missed.
 - Adjust existing cards with `personal_dashboard_patch_card` when only status,
@@ -48,6 +55,19 @@ Prefer high-signal cards that explain what matters now:
   context.
 - `watching`: stocks, teams, projects, GitHub issues, recurring beats, interests
   Hermes has learned are relevant.
+
+Avoid low-signal internal cards:
+
+- "Gmail is authenticated" is not a card. "Two important unread emails need
+  attention" can be a card.
+- "Digest formatting rules are known" is not a card. Use that rule to format
+  the card.
+- "A sports team is on the watchlist" is not a card. A fixture, score, injury,
+  standings move, or lack of verified live data can be mentioned only when it is
+  part of a useful current card.
+- "Project path/cadence/context exists" is not a card. A project deadline,
+  failing build, active issue, shipped update, or strategic decision can be a
+  card.
 
 Every visible card should include:
 

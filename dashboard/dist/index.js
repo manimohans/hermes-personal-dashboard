@@ -167,8 +167,41 @@
     return summary.indexOf("hermes has this in its ") === 0;
   }
 
+  function isInternalContextCard(card) {
+    const payload = card.payload || {};
+    if (payload.keep_visible) return false;
+    if (payload.internal_card || payload.operational_metadata) return true;
+    const text = [
+      card.title || "",
+      card.summary || "",
+      card.detail_md || "",
+      card.source_label || ""
+    ].join(" ").toLowerCase();
+    const internalPatterns = [
+      " is authenticated",
+      "access is available",
+      "token path:",
+      "oauth client path:",
+      "formatting rules",
+      "formatting preference",
+      "preferred delivery style",
+      "backend context",
+      "project path:",
+      "preference/watchlist card",
+      "no configured live",
+      "no verified live",
+      "should stay on the dashboard watchlist"
+    ];
+    for (let i = 0; i < internalPatterns.length; i += 1) {
+      if (text.indexOf(internalPatterns[i]) >= 0) return true;
+    }
+    return false;
+  }
+
   function visibleCards(cards) {
-    return (cards || []).filter(function (card) { return !isScannerCard(card); });
+    return (cards || []).filter(function (card) {
+      return !isScannerCard(card) && !isInternalContextCard(card);
+    });
   }
 
   function cronJobCount(preferences) {
