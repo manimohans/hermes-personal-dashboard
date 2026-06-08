@@ -58,6 +58,8 @@ def _cron_prompt(kind: str) -> str:
         "a path/cadence is configured, or a topic is on a watchlist without fresh data. The card title, "
         "summary, and payload must show the actual user-facing data; use payload.metrics, payload.items, "
         "or payload.sections for readings, feed items, events, emails, menus, fixtures, or other user data."
+        " Feed cards must include their visible entries in payload.items, payload.sections, or a domain alias "
+        "when item-level source records exist."
         " Reuse stable card IDs for the same user-facing topic so repeated runs update existing cards "
         "instead of duplicating them."
     )

@@ -250,7 +250,11 @@
       hasArrayData(payload.alerts) ||
       payload.thermal_zone0_c !== undefined ||
       payload.current_temp_c !== undefined ||
-      payload.current_temp_f !== undefined;
+      payload.current_temp_f !== undefined ||
+      payload.temperature_c !== undefined ||
+      payload.temperature_f !== undefined ||
+      payload.rain_probability_max_today !== undefined ||
+      payload.uv_index_max_today !== undefined;
   }
 
   function normalizeKey(value) {
@@ -279,12 +283,9 @@
     var payload = card.payload || {};
     var domain = String(card.domain || "").toLowerCase();
     if (domain === "weather") {
-      var location = normalizeKey(payload.location);
-      if (!location) {
-        var title = String(card.title || "");
-        var match = title.match(/^(.+?)\s+(?:weather|now|conditions)\b/i) || title.match(/^(.+?):/);
-        location = normalizeKey(match && match[1]);
-      }
+      var title = String(card.title || "");
+      var match = title.match(/^(.+?)\s+(?:weather|now|conditions)\b/i) || title.match(/^(.+?):/);
+      var location = normalizeKey(match && match[1]) || normalizeKey(payload.location);
       return "weather:" + (location || "current");
     }
     if ((domain === "alerts" || domain === "sensors" || domain === "sensor") && hasTemperatureSignal(card)) {

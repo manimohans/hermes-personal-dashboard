@@ -94,6 +94,11 @@ actual content without knowing the user's domain in advance:
 - `payload.metrics`: object or list of `{label, value, unit}` readings.
 - `payload.items`: list of `{title, summary, url, source, time}` items.
 - `payload.sections`: list of `{label, items}` groups for multi-part cards.
+- Feed cards are not complete unless they include the feed entries. For news,
+  sports, school/daycare, jobs, projects, email, calendar, or finance feeds,
+  store the visible entries in `payload.items`, `payload.sections`, or the
+  matching domain alias. A summary-only card is acceptable only when the source
+  truly has no item-level records.
 
 Domain-specific aliases are also supported when useful, such as
 `news_items`, `calendar_events`, `email_items`, `daycare_items`, `menu_items`,
