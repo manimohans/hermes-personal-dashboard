@@ -866,8 +866,15 @@
     );
   }
 
+  function sectionClass(title) {
+    return "hpd-section-" + String(title || "cards")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
   function cardSection(title, cards, emptyText) {
-    return el("section", { className: "hpd-section" },
+    return el("section", { className: cx("hpd-section", sectionClass(title)) },
       el("div", { className: "hpd-section-head" },
         el("h2", { text: title }),
         badge(String(cards.length))

@@ -733,8 +733,15 @@
     );
   }
 
+  function sectionClass(title) {
+    return "hpd-section-" + String(title || "cards")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
   function CardSection(props) {
-    return h("section", { className: "hpd-section" },
+    return h("section", { className: cx("hpd-section", sectionClass(props.title)) },
       h("div", { className: "hpd-section-head" },
         h("h2", null, props.title),
         h(Badge, null, String(props.cards.length))
