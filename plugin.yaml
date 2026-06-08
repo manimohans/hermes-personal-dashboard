@@ -19,3 +19,5 @@ tools:
   - personal_dashboard_create_cron_jobs
 commands:
   - personal-dashboard
+skills:
+  - briefing-curator

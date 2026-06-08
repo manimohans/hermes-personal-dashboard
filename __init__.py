@@ -36,7 +36,14 @@ def _cron_prompt(kind: str) -> str:
         "available Hermes tools to refresh useful live cards for the inferred context. Do not turn raw "
         "scanner lines, prompts, schedules, or memory-write JSON into cards. Write structured AI-curated "
         "cards with personal_dashboard_upsert_card and record the run "
-        "with personal_dashboard_record_refresh. Show provenance and why each card was shown."
+        "with personal_dashboard_record_refresh. Show provenance and why each card was shown. Do not create "
+        "visible cards merely saying a source is authenticated, a token exists, formatting rules are known, "
+        "a path/cadence is configured, or a topic is on a watchlist without fresh data. The card title, "
+        "summary, and payload must show the actual user-facing data; use payload.metrics, payload.items, "
+        "or payload.sections for readings, feed items, events, emails, menus, fixtures, or other user data. "
+        "Feed cards must include their visible entries in payload.items, payload.sections, or a domain alias "
+        "when item-level source records exist. Reuse stable card IDs for the same user-facing topic so "
+        "repeated runs update existing cards instead of duplicating them."
     )
     if kind == "morning":
         return f"{base} Produce the autonomous daily dashboard refresh."
