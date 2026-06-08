@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Dashboard/runtime state
+cards.db
+cards.db-*
+*.sqlite
+*.sqlite3
+
+# Node/editor/system
+node_modules/
+.DS_Store
+.idea/
+.vscode/
+
+# Test/build artifacts
+coverage/
+htmlcov/
+dist/tmp/

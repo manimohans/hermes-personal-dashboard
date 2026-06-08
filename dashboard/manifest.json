@@ -1,0 +1,14 @@
+{
+  "name": "hermes-personal-dashboard",
+  "label": "Personal Dashboard",
+  "description": "Generic daily briefing and situational awareness dashboard powered by Hermes jobs and memory-approved topics.",
+  "icon": "LayoutDashboard",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/personal-dashboard",
+    "position": "after:analytics"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}

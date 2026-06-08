@@ -1,0 +1,16 @@
+name: hermes-personal-dashboard
+version: 0.1.0
+description: "Generic personal daily-briefing dashboard for Hermes Agent. Stores structured cards that Hermes jobs update through plugin tools."
+author: "Hermes Personal Dashboard contributors"
+kind: standalone
+tools:
+  - personal_dashboard_upsert_card
+  - personal_dashboard_expire_card
+  - personal_dashboard_add_evidence
+  - personal_dashboard_list_cards
+  - personal_dashboard_record_refresh
+  - personal_dashboard_suggest_card
+  - personal_dashboard_get_topics
+  - personal_dashboard_get_preferences
+commands:
+  - personal-dashboard
