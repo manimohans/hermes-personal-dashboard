@@ -259,7 +259,7 @@ async def create_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str, A
                 "existing": existing,
                 "skipped": True,
                 "error": f"cron integration unavailable: {exc}",
-                "next_step": "Open Hermes and run `/personal-dashboard create-jobs`, or install this plugin inside a Hermes runtime that exposes cron.",
+                "next_step": "Open Hermes and run `/personal-dashboard create-jobs` where the Hermes cron runtime is available.",
             }
 
         schedules = {

@@ -188,7 +188,7 @@ List what Hermes inferred:
 /personal-dashboard context
 ```
 
-Create recurring autonomous refresh jobs, when running with Hermes plugin support:
+Install auto updates, when running with Hermes plugin support:
 
 ```bash
 /personal-dashboard create-jobs
@@ -234,8 +234,8 @@ Hermes to:
 The standalone dashboard includes correction controls, not setup controls:
 
 - **Refresh**: reload the snapshot
-- **Scan signals**: force a memory/session/cron signal scan
-- **Create refresh jobs**: install autonomous recurring jobs when Hermes cron integration is available; if the standalone server cannot reach Hermes cron, the dashboard shows the exact failure and the next command to run inside Hermes
+- **Scan Hermes signals**: read Hermes memory, sessions, and cron output once; this finds relevance signals but does not itself create final cards
+- **Install auto updates**: ask Hermes to create scheduled curator jobs for the morning brief, time-sensitive alerts, and weekend planner; if the standalone server cannot reach Hermes cron, the dashboard shows the exact failure and the next command to run inside Hermes
 - **Pin / Unpin**: keep a card visible
 - **Dismiss**: hide a card
 - **Hide** on inferred context: stop showing that inferred item
@@ -264,7 +264,7 @@ Hermes jobs can use these model-visible tools:
 | `personal_dashboard_record_refresh` | record refresh status |
 | `personal_dashboard_get_snapshot` | read cards, context, refreshes, and status |
 | `personal_dashboard_get_preferences` | read internal timestamps and cron ids |
-| `personal_dashboard_create_cron_jobs` | create autonomous refresh jobs |
+| `personal_dashboard_create_cron_jobs` | install auto updates by creating Hermes curator cron jobs |
 
 ## Standalone API
 
@@ -291,12 +291,12 @@ Important routes:
 | `POST /cards/{id}/dismiss` | dismiss a card |
 | `GET /refresh-runs` | list refresh history |
 | `POST /refresh-runs` | record refresh history |
-| `POST /automation/ensure-jobs` | create autonomous refresh jobs |
+| `POST /automation/ensure-jobs` | install auto updates by creating autonomous Hermes curator jobs |
 
-The standalone server can only create refresh jobs when it is running in an
+The standalone server can only install auto updates when it is running in an
 environment where Hermes exposes its cron module. If the dashboard says
-`cron integration unavailable`, do not wait for jobs that were not created. Open
-Hermes and run:
+`cron integration unavailable`, do not wait for jobs that were not created.
+Open Hermes and run:
 
 ```text
 /personal-dashboard create-jobs

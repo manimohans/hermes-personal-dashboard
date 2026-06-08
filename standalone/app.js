@@ -167,6 +167,51 @@
     return (cards || []).filter(function (card) { return !isScannerCard(card); });
   }
 
+  function cronJobCount(preferences) {
+    var jobs = (preferences && preferences.cron_jobs) || {};
+    return Object.keys(jobs).filter(function (key) { return jobs[key]; }).length;
+  }
+
+  function plural(value, singular, pluralText) {
+    return value === 1 ? singular : pluralText;
+  }
+
+  function autoUpdateState(snapshot) {
+    var preferences = (snapshot && snapshot.preferences) || {};
+    var count = cronJobCount(preferences);
+    if (count > 0) {
+      return {
+        tone: "installed",
+        badge: "Installed",
+        button: "Auto updates installed",
+        check: "Auto updates installed",
+        disabled: true,
+        title: "Auto updates installed",
+        detail: count + " scheduled Hermes curator " + plural(count, "job is", "jobs are") + " recorded. They run inside Hermes and update cards when due."
+      };
+    }
+    if (preferences.cron_unavailable) {
+      return {
+        tone: "blocked",
+        badge: "Needs Hermes",
+        button: "Retry install check",
+        check: "Auto updates need Hermes",
+        disabled: false,
+        title: "Auto updates need Hermes",
+        detail: "The standalone page can scan signals, but scheduled curator jobs must be created where Hermes cron is available."
+      };
+    }
+    return {
+      tone: "ready",
+      badge: "Not installed",
+      button: "Install auto updates",
+      check: "Auto updates not installed",
+      disabled: false,
+      title: "Install auto updates",
+      detail: "One-time action: asks Hermes to create scheduled curator jobs for the morning brief, time-sensitive alerts, and weekend planner."
+    };
+  }
+
   function button(label, variant, handler, disabled) {
     return el("button", {
       className: cx("hpd-button", variant && "hpd-button-" + variant),
@@ -256,14 +301,24 @@
         state.error = "";
         if (result.error) {
           state.notice = [
-            "Refresh jobs were not created.",
+            "Auto updates were not installed.",
+            "Tried to create Hermes curator jobs: morning brief, alert watcher, and weekend planner.",
             result.error,
             result.next_step || "Run /personal-dashboard create-jobs inside Hermes."
           ].join("\n");
         } else if (result.skipped) {
-          state.notice = "Refresh jobs already exist.";
+          var existingCount = cronJobCount({ cron_jobs: result.existing || {} });
+          state.notice = [
+            "Auto updates are already installed.",
+            (existingCount || "Existing") + " scheduled Hermes curator " + (existingCount === 1 ? "job is" : "jobs are") + " recorded. Cards update when Hermes runs them."
+          ].join("\n");
         } else {
-          state.notice = "Refresh jobs created.\nHermes will update cards when the jobs run.";
+          var createdCount = (result.created || []).length;
+          state.notice = [
+            "Auto updates installed.",
+            "Created " + createdCount + " Hermes curator " + (createdCount === 1 ? "job" : "jobs") + ": morning brief, alert watcher, and weekend planner.",
+            "Cards will update after Hermes runs them."
+          ].join("\n");
         }
         return load();
       })
@@ -337,6 +392,7 @@
   function curationPanel(snapshot, cards, contextItems) {
     var automation = snapshot.automation || {};
     var curation = snapshot.curation || {};
+    var autoUpdate = autoUpdateState(snapshot);
     var refreshed = automation.refreshed
       ? "Scanned just now"
       : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
@@ -350,17 +406,32 @@
           checkItem(contextItems.length > 0 ? "OK" : "-", contextItems.length + " signals", contextItems.length > 0),
           checkItem(cards.length > 0 ? "OK" : "-", cards.length + " curated cards", cards.length > 0),
           curation.scanner_cards_suppressed ? checkItem("OK", curation.scanner_cards_suppressed + " logs hidden", true) : null,
+          checkItem(autoUpdate.tone === "installed" ? "OK" : "-", autoUpdate.check, autoUpdate.tone === "installed"),
           checkItem("-", refreshed, false)
         )
       ),
       el("div", { className: "hpd-start-actions" },
-        button(state.mutating ? "Scanning" : "Scan signals", null, function () {
-          mutate(request("/context/refresh", {
-            method: "POST",
-            body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false })
-          }));
-        }, state.mutating),
-        button("Create refresh jobs", "secondary", createRefreshJobs, state.mutating)
+        el("div", { className: "hpd-action-group" },
+          el("div", { className: "hpd-action-title-row" },
+            el("strong", { className: "hpd-action-title", text: "Scan now" }),
+            badge("Manual")
+          ),
+          el("p", { className: "hpd-action-desc", text: "Reads Hermes memory, sessions, and cron output once. This finds signals; Hermes-curated jobs turn the best signals into cards." }),
+          button(state.mutating ? "Scanning" : "Scan Hermes signals", null, function () {
+            mutate(request("/context/refresh", {
+              method: "POST",
+              body: JSON.stringify({ include_sessions: true, include_cron: true, create_cards: false })
+            }));
+          }, state.mutating)
+        ),
+        el("div", { className: cx("hpd-action-group", "hpd-action-group-" + autoUpdate.tone) },
+          el("div", { className: "hpd-action-title-row" },
+            el("strong", { className: "hpd-action-title", text: autoUpdate.title }),
+            badge(autoUpdate.badge, autoUpdate.tone === "installed" ? "hpd-badge-pin" : "")
+          ),
+          el("p", { className: "hpd-action-desc", text: autoUpdate.detail }),
+          button(autoUpdate.button, "secondary", createRefreshJobs, state.mutating || autoUpdate.disabled)
+        )
       )
     );
   }

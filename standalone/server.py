@@ -84,7 +84,7 @@ def create_standard_cron_jobs(body: Optional[Dict[str, Any]] = None) -> Dict[str
             "existing": existing,
             "skipped": True,
             "error": f"cron integration unavailable: {exc}",
-            "next_step": "Open Hermes and run `/personal-dashboard create-jobs`. The standalone server cannot create Hermes cron jobs in this environment.",
+            "next_step": "Open Hermes and run `/personal-dashboard create-jobs` where the Hermes cron runtime is available.",
         }
 
     schedules = {

@@ -135,7 +135,8 @@ class PluginRegistrationTest(unittest.TestCase):
 
     def test_slash_create_jobs_reports_missing_cron_runtime(self) -> None:
         message = self.ctx.commands["personal-dashboard"]["handler"]("create-jobs")
-        self.assertIn("Cron jobs were not created:", message)
+        self.assertIn("Auto updates were not installed.", message)
+        self.assertIn("morning brief, alert watcher, weekend planner", message)
 
 
 if __name__ == "__main__":

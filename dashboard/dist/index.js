@@ -136,6 +136,51 @@
     return (cards || []).filter(function (card) { return !isScannerCard(card); });
   }
 
+  function cronJobCount(preferences) {
+    const jobs = (preferences && preferences.cron_jobs) || {};
+    return Object.keys(jobs).filter(function (key) { return jobs[key]; }).length;
+  }
+
+  function plural(value, singular, pluralText) {
+    return value === 1 ? singular : pluralText;
+  }
+
+  function autoUpdateState(snapshot) {
+    const preferences = (snapshot && snapshot.preferences) || {};
+    const count = cronJobCount(preferences);
+    if (count > 0) {
+      return {
+        tone: "installed",
+        badge: "Installed",
+        button: "Auto updates installed",
+        check: "Auto updates installed",
+        disabled: true,
+        title: "Auto updates installed",
+        detail: count + " scheduled Hermes curator " + plural(count, "job is", "jobs are") + " recorded. They run inside Hermes and update cards when due."
+      };
+    }
+    if (preferences.cron_unavailable) {
+      return {
+        tone: "blocked",
+        badge: "Needs Hermes",
+        button: "Retry install check",
+        check: "Auto updates need Hermes",
+        disabled: false,
+        title: "Auto updates need Hermes",
+        detail: "The standalone page can scan signals, but scheduled curator jobs must be created where Hermes cron is available."
+      };
+    }
+    return {
+      tone: "ready",
+      badge: "Not installed",
+      button: "Install auto updates",
+      check: "Auto updates not installed",
+      disabled: false,
+      title: "Install auto updates",
+      detail: "One-time action: asks Hermes to create scheduled curator jobs for the morning brief, time-sensitive alerts, and weekend planner."
+    };
+  }
+
   function Button(props) {
     return h("button", Object.assign({}, props, {
       className: cx("hpd-button", props.variant && "hpd-button-" + props.variant, props.className),
@@ -268,6 +313,7 @@
     const curation = props.curation || {};
     const contextCount = (props.contextItems || []).length;
     const cardCount = (props.cards || []).length;
+    const autoUpdate = autoUpdateState(props.snapshot || {});
     const refreshed = automation.refreshed ? "Scanned just now" : (automation.last_auto_refresh_at ? "Scanned " + freshness(automation.last_auto_refresh_at) : "Auto scan ready");
     return h("section", { className: "hpd-start" },
       h("div", { className: "hpd-start-copy" },
@@ -279,12 +325,27 @@
           h("span", { className: cx("hpd-checkitem", contextCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, contextCount > 0 ? "OK" : "-"), contextCount + " signals"),
           h("span", { className: cx("hpd-checkitem", cardCount > 0 && "is-done") }, h("span", { className: "hpd-checkmark" }, cardCount > 0 ? "OK" : "-"), cardCount + " curated cards"),
           curation.scanner_cards_suppressed ? h("span", { className: cx("hpd-checkitem", "is-done") }, h("span", { className: "hpd-checkmark" }, "OK"), curation.scanner_cards_suppressed + " logs hidden") : null,
+          h("span", { className: cx("hpd-checkitem", autoUpdate.tone === "installed" && "is-done") }, h("span", { className: "hpd-checkmark" }, autoUpdate.tone === "installed" ? "OK" : "-"), autoUpdate.check),
           h("span", { className: "hpd-checkitem" }, h("span", { className: "hpd-checkmark" }, "-"), refreshed)
         )
       ),
       h("div", { className: "hpd-start-actions" },
-        h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan signals"),
-        h(Button, { variant: "secondary", onClick: props.onCreateCron, disabled: props.loading }, "Create refresh jobs")
+        h("div", { className: "hpd-action-group" },
+          h("div", { className: "hpd-action-title-row" },
+            h("strong", { className: "hpd-action-title" }, "Scan now"),
+            h(Badge, null, "Manual")
+          ),
+          h("p", { className: "hpd-action-desc" }, "Reads Hermes memory, sessions, and cron output once. This finds signals; Hermes-curated jobs turn the best signals into cards."),
+          h(Button, { onClick: props.onScanNow, disabled: props.loading }, props.loading ? "Scanning" : "Scan Hermes signals")
+        ),
+        h("div", { className: cx("hpd-action-group", "hpd-action-group-" + autoUpdate.tone) },
+          h("div", { className: "hpd-action-title-row" },
+            h("strong", { className: "hpd-action-title" }, autoUpdate.title),
+            h(Badge, { className: autoUpdate.tone === "installed" ? "hpd-badge-pin" : "" }, autoUpdate.badge)
+          ),
+          h("p", { className: "hpd-action-desc" }, autoUpdate.detail),
+          h(Button, { variant: "secondary", onClick: props.onCreateCron, disabled: props.loading || autoUpdate.disabled }, autoUpdate.button)
+        )
       )
     );
   }
@@ -455,14 +516,24 @@
           setError("");
           if (result && result.error) {
             setNotice([
-              "Refresh jobs were not created.",
+              "Auto updates were not installed.",
+              "Tried to create Hermes curator jobs: morning brief, alert watcher, and weekend planner.",
               result.error,
               result.next_step || "Run /personal-dashboard create-jobs inside Hermes."
             ].join("\n"));
           } else if (result && result.skipped) {
-            setNotice("Refresh jobs already exist.");
+            const existingCount = cronJobCount({ cron_jobs: result.existing || {} });
+            setNotice([
+              "Auto updates are already installed.",
+              (existingCount || "Existing") + " scheduled Hermes curator " + (existingCount === 1 ? "job is" : "jobs are") + " recorded. Cards update when Hermes runs them."
+            ].join("\n"));
           } else {
-            setNotice("Refresh jobs created.\nHermes will update cards when the jobs run.");
+            const createdCount = (result.created || []).length;
+            setNotice([
+              "Auto updates installed.",
+              "Created " + createdCount + " Hermes curator " + (createdCount === 1 ? "job" : "jobs") + ": morning brief, alert watcher, and weekend planner.",
+              "Cards will update after Hermes runs them."
+            ].join("\n"));
           }
           return load();
         })
@@ -502,6 +573,7 @@
       notice ? h(NoticePanel, { message: notice }) : null,
       snapshot ? h(React.Fragment, null,
         h(CurationPanel, {
+          snapshot: snapshot,
           automation: snapshot.automation || {},
           curation: curation,
           contextItems: contextItems,

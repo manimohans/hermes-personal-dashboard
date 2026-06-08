@@ -77,7 +77,7 @@ def _create_standard_cron_jobs(force: bool = False) -> Dict[str, Any]:
             "existing": existing,
             "skipped": True,
             "error": f"cron integration unavailable: {exc}",
-            "next_step": "Run this command inside Hermes where the cron runtime is available, or reinstall the plugin bundle with `./run.sh`.",
+            "next_step": "Run `/personal-dashboard create-jobs` inside Hermes where the cron runtime is available.",
         }
 
     schedules = {
@@ -217,7 +217,7 @@ Subcommands:
   status           Show card, inferred context, source, and refresh counts
   refresh          Scan Hermes memory, sessions, and cron output now
   context          List the top inferred context items
-  create-jobs      Create autonomous Hermes cron refresh jobs
+  create-jobs      Install auto updates by creating Hermes curator cron jobs
   help             Show this help
 
 Open the visual dashboard from `hermes dashboard` at the Personal Dashboard tab.
@@ -274,10 +274,15 @@ def _handle_slash(raw_args: str) -> str:
         if sub in {"create-jobs", "jobs"}:
             result = _create_standard_cron_jobs(force=False)
             if result.get("error"):
-                return f"Cron jobs were not created: {result['error']}"
+                return (
+                    "Auto updates were not installed.\n"
+                    "  tried to create: morning brief, alert watcher, weekend planner\n"
+                    f"  error: {result['error']}\n"
+                    f"  next: {result.get('next_step') or 'Run this command inside Hermes.'}"
+                )
             if result.get("skipped"):
-                return f"Cron jobs already exist: {result['existing']}"
-            return f"Created {len(result.get('created') or [])} cron job(s)."
+                return f"Auto updates are already installed: {result['existing']}"
+            return f"Auto updates installed: created {len(result.get('created') or [])} Hermes curator job(s)."
         return f"Unknown subcommand: {sub}\n\n{_HELP}"
     except Exception as exc:
         return f"personal-dashboard failed: {exc}"
