@@ -12,7 +12,9 @@ class CoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.old_home = os.environ.get("HERMES_HOME")
+        self.old_data = os.environ.get("HERMES_PERSONAL_DASHBOARD_DATA")
         os.environ["HERMES_HOME"] = self.tmp.name
+        os.environ.pop("HERMES_PERSONAL_DASHBOARD_DATA", None)
         self.conn = core.connect()
 
     def tearDown(self) -> None:
@@ -21,7 +23,15 @@ class CoreTest(unittest.TestCase):
             os.environ.pop("HERMES_HOME", None)
         else:
             os.environ["HERMES_HOME"] = self.old_home
+        if self.old_data is None:
+            os.environ.pop("HERMES_PERSONAL_DASHBOARD_DATA", None)
+        else:
+            os.environ["HERMES_PERSONAL_DASHBOARD_DATA"] = self.old_data
         self.tmp.cleanup()
+
+    def test_default_db_path_is_shared_plugin_database(self) -> None:
+        expected = Path(self.tmp.name) / "plugins" / core.PLUGIN_ID / "cards.db"
+        self.assertEqual(core.db_path(), expected)
 
     def test_upsert_card_updates_existing(self) -> None:
         first = core.upsert_card(

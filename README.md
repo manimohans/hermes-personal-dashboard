@@ -357,6 +357,16 @@ $HERMES_HOME/plugins/hermes-personal-dashboard/cards.db
 This is important: cards written by Hermes jobs and cards read by the standalone
 web UI must come from the same file.
 
+Older standalone-only installs may have used:
+
+```text
+$HERMES_HOME/personal-dashboard/cards.db
+```
+
+On startup, the standalone server migrates that old database into the shared
+plugin location only when the shared database does not already exist. It will
+not overwrite cards Hermes has already written.
+
 To force a custom data location, set:
 
 ```text

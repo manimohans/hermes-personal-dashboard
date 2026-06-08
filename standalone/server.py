@@ -7,6 +7,7 @@ import argparse
 import json
 import mimetypes
 import os
+import sqlite3
 import sys
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -39,6 +40,41 @@ DAY_NUMBERS = {
     "sat": 6,
     "saturday": 6,
 }
+
+
+def legacy_data_dir() -> Path:
+    return core.hermes_home() / "personal-dashboard"
+
+
+def migrate_legacy_standalone_db() -> Optional[str]:
+    if os.environ.get("HERMES_PERSONAL_DASHBOARD_DATA"):
+        return None
+    legacy_db = legacy_data_dir() / "cards.db"
+    target_db = core.db_path()
+    if not legacy_db.exists() or legacy_db == target_db:
+        return None
+    if target_db.exists():
+        return f"Legacy standalone database left untouched because shared database already exists: {legacy_db}"
+    target_db.parent.mkdir(parents=True, exist_ok=True)
+    source = None
+    target = None
+    migration_error: Optional[sqlite3.Error] = None
+    try:
+        source = sqlite3.connect(str(legacy_db))
+        target = sqlite3.connect(str(target_db))
+        source.backup(target)
+    except sqlite3.Error as exc:
+        migration_error = exc
+    finally:
+        if target is not None:
+            target.close()
+        if source is not None:
+            source.close()
+    if migration_error is not None:
+        if target_db.exists():
+            target_db.unlink()
+        return f"Legacy standalone database migration skipped: {legacy_db} could not be copied ({migration_error})"
+    return f"Migrated legacy standalone database to shared plugin database: {target_db}"
 
 
 def cron_prompt(kind: str) -> str:
@@ -395,10 +431,13 @@ def main() -> int:
     args = parser.parse_args()
     if args.hermes_home:
         os.environ["HERMES_HOME"] = str(Path(args.hermes_home).expanduser())
+    migration_note = migrate_legacy_standalone_db()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Hermes Personal Dashboard running at http://{args.host}:{args.port}", flush=True)
     print(f"Reading Hermes data from {core.hermes_home()}", flush=True)
     print(f"Dashboard database: {core.db_path()}", flush=True)
+    if migration_note:
+        print(migration_note, flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
