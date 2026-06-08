@@ -108,6 +108,46 @@
     return el("span", { className: cx("hpd-badge", className), text: label });
   }
 
+  function runningRefresh(snapshot) {
+    var runs = snapshot ? (snapshot.refresh_runs || []) : [];
+    for (var i = 0; i < runs.length; i += 1) {
+      if (runs[i].status === "running") return runs[i];
+    }
+    return null;
+  }
+
+  function syncStatus(snapshot) {
+    var running = runningRefresh(snapshot);
+    var title = "";
+    var detail = "";
+    if (state.mutating) {
+      title = "Updating dashboard";
+      detail = "Refreshing Hermes context, cards, freshness, and source coverage.";
+    } else if (state.loading && !snapshot) {
+      title = "Reading Hermes context";
+      detail = "Scanning memory, sessions, cron output, and existing dashboard cards.";
+    } else if (state.loading) {
+      title = "Checking for new Hermes context";
+      detail = "Refreshing the dashboard snapshot and stale-card status.";
+    } else if (running) {
+      title = "Hermes refresh running";
+      detail = running.summary || running.job_key || "A scheduled dashboard refresh is in progress.";
+    } else {
+      return null;
+    }
+    return el("section", { className: cx("hpd-sync", !snapshot && "is-prominent") },
+      el("div", { className: "hpd-sync-pulse", "aria-hidden": "true" }),
+      el("div", { className: "hpd-sync-copy" },
+        el("p", { className: "hpd-eyebrow", text: "Working" }),
+        el("strong", { text: title }),
+        el("span", { text: detail })
+      ),
+      el("div", { className: "hpd-sync-meter", "aria-hidden": "true" },
+        el("span", { className: "hpd-sync-line" })
+      )
+    );
+  }
+
   function mutate(promise) {
     state.mutating = true;
     render();
@@ -282,7 +322,7 @@
           el("h3", { text: "Refreshes" }),
           runs.length ? runs.slice(0, 10).map(function (run) {
             return el("div", { className: "hpd-run" },
-              el("span", { className: cx("hpd-dot", run.status === "error" && "is-error") }),
+              el("span", { className: cx("hpd-dot", run.status === "error" && "is-error", run.status === "running" && "is-running") }),
               el("div", null,
                 el("strong", { text: run.job_key }),
                 el("p", { text: (run.summary || run.error || run.status) + " - " + freshness(run.started_at) })
@@ -320,8 +360,8 @@
           button(state.loading ? "Refreshing" : "Refresh", "secondary", load, state.loading || state.mutating)
         )
       ),
+      syncStatus(snapshot),
       state.error ? el("div", { className: "hpd-error", text: state.error }) : null,
-      state.loading && !snapshot ? el("div", { className: "hpd-empty hpd-loading", text: "Reading Hermes memory and session context." }) : null,
       snapshot ? [
         reflectionPanel(snapshot, cards, contextItems),
         el("div", { className: "hpd-sections" },
@@ -337,5 +377,5 @@
   }
 
   load();
-  window.setInterval(load, 5 * 60 * 1000);
+  window.setInterval(load, 60 * 1000);
 })();

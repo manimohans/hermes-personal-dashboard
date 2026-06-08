@@ -74,6 +74,47 @@
     return h("span", { className: cx("hpd-badge", props.className) }, props.children);
   }
 
+  function runningRefresh(snapshot) {
+    const runs = snapshot ? (snapshot.refresh_runs || []) : [];
+    for (let i = 0; i < runs.length; i += 1) {
+      if (runs[i].status === "running") return runs[i];
+    }
+    return null;
+  }
+
+  function SyncStatus(props) {
+    const snapshot = props.snapshot;
+    const running = runningRefresh(snapshot);
+    let title = "";
+    let detail = "";
+    if (props.mutating) {
+      title = "Updating dashboard";
+      detail = "Refreshing Hermes context, cards, freshness, and source coverage.";
+    } else if (props.loading && !snapshot) {
+      title = "Reading Hermes context";
+      detail = "Scanning memory, sessions, cron output, and existing dashboard cards.";
+    } else if (props.loading) {
+      title = "Checking for new Hermes context";
+      detail = "Refreshing the dashboard snapshot and stale-card status.";
+    } else if (running) {
+      title = "Hermes refresh running";
+      detail = running.summary || running.job_key || "A scheduled dashboard refresh is in progress.";
+    } else {
+      return null;
+    }
+    return h("section", { className: cx("hpd-sync", !snapshot && "is-prominent") },
+      h("div", { className: "hpd-sync-pulse", "aria-hidden": "true" }),
+      h("div", { className: "hpd-sync-copy" },
+        h("p", { className: "hpd-eyebrow" }, "Working"),
+        h("strong", null, title),
+        h("span", null, detail)
+      ),
+      h("div", { className: "hpd-sync-meter", "aria-hidden": "true" },
+        h("span", { className: "hpd-sync-line" })
+      )
+    );
+  }
+
   function CardItem(props) {
     const card = props.card;
     const isPinned = Boolean(card.pinned) || card.status === "pinned";
@@ -221,7 +262,7 @@
           h("h3", null, "Refreshes"),
           runs.length ? runs.slice(0, 10).map(function (run) {
             return h("div", { key: run.id, className: "hpd-run" },
-              h("span", { className: cx("hpd-dot", run.status === "error" && "is-error") }),
+              h("span", { className: cx("hpd-dot", run.status === "error" && "is-error", run.status === "running" && "is-running") }),
               h("div", null,
                 h("strong", null, run.job_key),
                 h("p", null, (run.summary || run.error || run.status) + " - " + freshness(run.started_at))
@@ -259,6 +300,11 @@
       load();
     }, [load]);
 
+    React.useEffect(function () {
+      const id = window.setInterval(load, 60000);
+      return function () { window.clearInterval(id); };
+    }, [load]);
+
     function mutate(promise) {
       setMutating(true);
       return promise
@@ -293,8 +339,8 @@
           h(Button, { variant: "secondary", onClick: load, disabled: loading || mutating }, loading ? "Refreshing" : "Refresh")
         )
       ),
+      h(SyncStatus, { snapshot: snapshot, loading: loading, mutating: mutating }),
       error ? h("div", { className: "hpd-error" }, error) : null,
-      loading && !snapshot ? h("div", { className: "hpd-empty hpd-loading" }, "Reading Hermes memory and session context.") : null,
       snapshot ? h(React.Fragment, null,
         h(ReflectionPanel, {
           automation: snapshot.automation || {},

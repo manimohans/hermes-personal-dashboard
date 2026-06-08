@@ -206,6 +206,11 @@ The standalone dashboard includes correction controls, not setup controls:
 - **Hide** on inferred context: stop showing that inferred item
 - **Source Coverage**: see which Hermes memory/session/cron sources were read
 
+During first load, manual scans, snapshot refreshes, and running cron jobs, the
+top of the dashboard shows a **Working** strip with an animated scan meter. That
+strip is the visual signal that Hermes context is being read or dashboard cards
+are being updated.
+
 ## Plugin Tools
 
 Hermes jobs can use these model-visible tools:
