@@ -204,17 +204,15 @@
     var payload = card.payload || {};
     if (payload.keep_visible) return false;
     if (payload.internal_card || payload.operational_metadata) return true;
-    var text = [
+    var primaryText = [
       card.title || "",
       card.summary || "",
-      card.detail_md || "",
       card.source_label || ""
     ].join(" ").toLowerCase();
+    var detailText = String(card.detail_md || "").toLowerCase();
     var internalPatterns = [
       " is authenticated",
       "access is available",
-      "token path:",
-      "oauth client path:",
       "formatting rules",
       "formatting preference",
       "preferred delivery style",
@@ -226,8 +224,9 @@
       "should stay on the dashboard watchlist"
     ];
     for (var i = 0; i < internalPatterns.length; i += 1) {
-      if (text.indexOf(internalPatterns[i]) >= 0) return true;
+      if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
     }
+    if (detailText.indexOf("token path:") >= 0 || detailText.indexOf("oauth client path:") >= 0) return true;
     return false;
   }
 
