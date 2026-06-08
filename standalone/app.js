@@ -362,6 +362,29 @@
     }
   }
 
+  function listItemKey(item) {
+    if (typeof item === "string") return item.toLowerCase();
+    if (!item || typeof item !== "object") return "";
+    var title = itemTitle(item).toLowerCase();
+    var anchor = item.url || item.source_url || item.link || item.start || item.date || item.time || "";
+    return (title + "|" + String(anchor).toLowerCase()).trim();
+  }
+
+  function addListGroup(groups, label, items) {
+    if (!Array.isArray(items) || !items.length) return;
+    var keys = items.map(listItemKey).filter(Boolean);
+    for (var i = 0; i < groups.length; i += 1) {
+      var other = groups[i];
+      var overlap = keys.filter(function (key) { return other.keys.indexOf(key) >= 0; }).length;
+      if (!overlap) continue;
+      if (items.length > other.items.length) {
+        groups[i] = { label: label, items: items, keys: keys };
+      }
+      return;
+    }
+    groups.push({ label: label, items: items, keys: keys });
+  }
+
   function itemTitle(item) {
     if (typeof item === "string") return item;
     return item.title || item.subject || item.name || item.label || item.summary || "Item";
@@ -403,7 +426,10 @@
     var nodes = [];
     var metrics = [];
     appendMetricObject(metrics, payload.metrics);
-    appendMetricObject(metrics, payload.readings);
+    var hasExplicitMetrics = metrics.filter(Boolean).length > 0;
+    if (!hasExplicitMetrics) {
+      appendMetricObject(metrics, payload.readings);
+    }
     var hasGenericMetrics = metrics.filter(Boolean).length > 0;
     var observed = payload.observed || payload.current || null;
     if (!hasGenericMetrics && observed && typeof observed === "object" && !Array.isArray(observed)) {
@@ -426,39 +452,36 @@
       nodes.push(el("div", { className: "hpd-data-grid" }, metrics));
     }
 
+    var listGroups = [];
     if (Array.isArray(payload.sections)) {
       payload.sections.forEach(function (section) {
         if (!section || typeof section !== "object") return;
-        var list = dataList(section.label || section.title || "Items", section.items || section.rows || section.entries);
-        if (list) nodes.push(list);
+        addListGroup(listGroups, section.label || section.title || "Items", section.items || section.rows || section.entries);
       });
     }
     if (payload.lists && typeof payload.lists === "object" && !Array.isArray(payload.lists)) {
       Object.keys(payload.lists).forEach(function (key) {
-        var list = dataList(humanLabel(key), payload.lists[key]);
-        if (list) nodes.push(list);
+        addListGroup(listGroups, humanLabel(key), payload.lists[key]);
       });
     }
-    var hasGenericLists = nodes.length > (metrics.length ? 1 : 0);
     if (Array.isArray(payload.items) && payload.items.length) {
-      var genericItems = dataList("Items", payload.items);
-      if (genericItems) nodes.push(genericItems);
-      hasGenericLists = true;
+      addListGroup(listGroups, "Items", payload.items);
     }
 
-    if (!hasGenericLists) {
-      [
-        ["News", payload.news_items || payload.headlines || payload.stories],
-        ["Calendar", payload.calendar_events || payload.events],
-        ["Email", payload.email_items || payload.emails],
-        ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
-        ["Sports", payload.fixtures || payload.games || payload.scores],
-        ["Stocks", payload.tickers || payload.positions || payload.alerts]
-      ].forEach(function (group) {
-        var list = dataList(group[0], group[1]);
-        if (list) nodes.push(list);
-      });
-    }
+    [
+      ["News", payload.news_items || payload.headlines || payload.stories],
+      ["Calendar", payload.calendar_events || payload.events],
+      ["Email", payload.email_items || payload.emails],
+      ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
+      ["Sports", payload.fixtures || payload.games || payload.scores],
+      ["Stocks", payload.tickers || payload.positions || payload.alerts]
+    ].forEach(function (group) {
+      addListGroup(listGroups, group[0], group[1]);
+    });
+    listGroups.forEach(function (group) {
+      var list = dataList(group.label, group.items);
+      if (list) nodes.push(list);
+    });
 
     if (!nodes.length) return null;
     return el("div", { className: "hpd-data" }, nodes);

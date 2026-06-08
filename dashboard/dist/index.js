@@ -377,6 +377,29 @@
     }
   }
 
+  function listItemKey(item) {
+    if (typeof item === "string") return item.toLowerCase();
+    if (!item || typeof item !== "object") return "";
+    const title = itemTitle(item).toLowerCase();
+    const anchor = item.url || item.source_url || item.link || item.start || item.date || item.time || "";
+    return (title + "|" + String(anchor).toLowerCase()).trim();
+  }
+
+  function addListGroup(groups, label, items) {
+    if (!Array.isArray(items) || !items.length) return;
+    const keys = items.map(listItemKey).filter(Boolean);
+    for (let i = 0; i < groups.length; i += 1) {
+      const other = groups[i];
+      const overlap = keys.filter(function (key) { return other.keys.indexOf(key) >= 0; }).length;
+      if (!overlap) continue;
+      if (items.length > other.items.length) {
+        groups[i] = { label: label, items: items, keys: keys };
+      }
+      return;
+    }
+    groups.push({ label: label, items: items, keys: keys });
+  }
+
   function itemTitle(item) {
     if (typeof item === "string") return item;
     return item.title || item.subject || item.name || item.label || item.summary || "Item";
@@ -419,7 +442,10 @@
     const observed = payload.observed || payload.current || null;
     const metrics = [];
     appendMetricObject(metrics, payload.metrics);
-    appendMetricObject(metrics, payload.readings);
+    const hasExplicitMetrics = metrics.length > 0;
+    if (!hasExplicitMetrics) {
+      appendMetricObject(metrics, payload.readings);
+    }
     const hasGenericMetrics = metrics.length > 0;
     if (!hasGenericMetrics && observed && typeof observed === "object" && !Array.isArray(observed)) {
       metrics.push(["Condition", observed.condition]);
@@ -439,31 +465,33 @@
     const metricNodes = metrics.map(function (metric) {
       return h(DataMetric, { key: metric[0] + ":" + metric[1], label: metric[0], value: metric[1], suffix: metric[2] });
     }).filter(Boolean);
-    const genericLists = [];
+    const listGroups = [];
     if (Array.isArray(payload.sections)) {
       payload.sections.forEach(function (section) {
         if (!section || typeof section !== "object") return;
-        genericLists.push([section.label || section.title || "Items", section.items || section.rows || section.entries]);
+        addListGroup(listGroups, section.label || section.title || "Items", section.items || section.rows || section.entries);
       });
     }
     if (payload.lists && typeof payload.lists === "object" && !Array.isArray(payload.lists)) {
       Object.keys(payload.lists).forEach(function (key) {
-        genericLists.push([humanLabel(key), payload.lists[key]]);
+        addListGroup(listGroups, humanLabel(key), payload.lists[key]);
       });
     }
     if (Array.isArray(payload.items) && payload.items.length) {
-      genericLists.push(["Items", payload.items]);
+      addListGroup(listGroups, "Items", payload.items);
     }
-    const domainLists = genericLists.length ? [] : [
+    [
       ["News", payload.news_items || payload.headlines || payload.stories],
       ["Calendar", payload.calendar_events || payload.events],
       ["Email", payload.email_items || payload.emails],
       ["Daycare", payload.daycare_items || payload.menu_items || payload.school_items],
       ["Sports", payload.fixtures || payload.games || payload.scores],
       ["Stocks", payload.tickers || payload.positions || payload.alerts]
-    ];
-    const lists = genericLists.concat(domainLists).map(function (group) {
-      return h(DataList, { key: group[0], label: group[0], items: group[1] });
+    ].forEach(function (group) {
+      addListGroup(listGroups, group[0], group[1]);
+    });
+    const lists = listGroups.map(function (group) {
+      return h(DataList, { key: group.label, label: group.label, items: group.items });
     }).filter(Boolean);
     if (!metricNodes.length && !lists.length) return null;
     return h("div", { className: "hpd-data" },
