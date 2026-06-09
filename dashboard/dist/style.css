@@ -2283,3 +2283,247 @@
     max-height: none;
   }
 }
+
+/* Card-wall redesign.
+   Keep the page as a snapshot: section labels are light structure, cards carry the UI. */
+.hpd-root {
+  --hpd-bg: #f5f7fb;
+  --hpd-surface: #ffffff;
+  --hpd-surface-soft: #f1f5f9;
+  --hpd-ink: #111827;
+  --hpd-muted: #64748b;
+  --hpd-line: rgba(15, 23, 42, 0.09);
+  --hpd-line-strong: rgba(37, 99, 235, 0.22);
+  --hpd-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 24px rgba(15, 23, 42, 0.08);
+  --hpd-shadow-shell: none;
+  background: var(--hpd-bg);
+  gap: 14px;
+  padding: 18px;
+}
+
+.hpd-root.hpd-theme-night {
+  --hpd-bg: #0e1116;
+  --hpd-surface: #181c22;
+  --hpd-surface-soft: #202731;
+  --hpd-ink: #f3f6fb;
+  --hpd-muted: #9aa6b6;
+  --hpd-line: rgba(226, 232, 240, 0.08);
+  --hpd-line-strong: rgba(125, 183, 255, 0.22);
+  --hpd-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.28), 0 12px 28px rgba(0, 0, 0, 0.22);
+  background:
+    radial-gradient(circle at 20% -10%, rgba(59, 130, 246, 0.18), transparent 30%),
+    var(--hpd-bg);
+}
+
+.hpd-header {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 48px;
+}
+
+.hpd-header > div {
+  padding: 0;
+}
+
+.hpd-header > div + div {
+  border-left: 0;
+}
+
+.hpd-header h1 {
+  font-size: clamp(28px, 2vw, 38px);
+  letter-spacing: -0.01em;
+}
+
+.hpd-header-actions {
+  align-items: center;
+}
+
+.hpd-dashboard-grid,
+.hpd-main-column,
+.hpd-sections {
+  gap: 16px;
+}
+
+.hpd-sections {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.hpd-briefing,
+.hpd-section {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.hpd-briefing {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 150px minmax(0, 1fr);
+}
+
+.hpd-briefing-head,
+.hpd-section-head {
+  background: transparent;
+  border: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.hpd-briefing-head {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--hpd-surface) 92%, var(--hpd-blue) 8%);
+  border: 1px solid var(--hpd-line);
+  border-radius: 16px;
+  box-shadow: var(--hpd-shadow-card);
+  min-height: 96px;
+  padding: 14px;
+}
+
+.hpd-briefing-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 360px));
+  padding: 0;
+}
+
+.hpd-briefing-card,
+.hpd-card {
+  background: var(--hpd-surface);
+  border: 1px solid var(--hpd-line);
+  border-radius: 16px;
+  box-shadow: var(--hpd-shadow-card);
+}
+
+.hpd-briefing-card {
+  min-height: 96px;
+  padding: 14px;
+}
+
+.hpd-section-head {
+  margin: 2px 2px 10px;
+}
+
+.hpd-section h2 {
+  color: var(--hpd-ink);
+  font-size: 18px;
+  font-weight: 780;
+}
+
+.hpd-section-head .hpd-badge {
+  background: var(--hpd-surface-soft);
+}
+
+.hpd-card-grid {
+  gap: 12px;
+  padding: 0;
+}
+
+.hpd-card {
+  min-height: 0;
+  padding: 16px;
+}
+
+.hpd-card h3 {
+  font-size: 18px;
+}
+
+.hpd-summary,
+.hpd-data-item p,
+.hpd-briefing-card p {
+  color: var(--hpd-muted);
+}
+
+.hpd-data {
+  max-height: 176px;
+}
+
+.hpd-data-list {
+  background: transparent;
+  border: 0;
+  max-height: 154px;
+}
+
+.hpd-data-label {
+  border: 0;
+  padding: 0;
+}
+
+.hpd-data-item {
+  padding: 7px 0 7px 14px;
+}
+
+.hpd-data-item + .hpd-data-item {
+  border-top: 0;
+}
+
+.hpd-data-metric {
+  background: var(--hpd-surface-soft);
+  border: 1px solid var(--hpd-line);
+}
+
+@media (min-width: 1180px) {
+  .hpd-sections {
+    grid-template-areas:
+      "snapshot snapshot"
+      "today today"
+      "this-week on-radar" !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .hpd-card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .hpd-section-today .hpd-card-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .hpd-section-this-week .hpd-card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 320px));
+  }
+
+  .hpd-section-on-radar .hpd-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1800px) {
+  .hpd-root {
+    padding: 22px;
+  }
+
+  .hpd-sections {
+    gap: 18px;
+  }
+
+  .hpd-section-today .hpd-card-grid {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hpd-root {
+    padding: 12px;
+  }
+
+  .hpd-header {
+    gap: 12px;
+  }
+
+  .hpd-briefing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hpd-briefing-head {
+    min-height: 0;
+  }
+
+  .hpd-briefing-grid,
+  .hpd-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
