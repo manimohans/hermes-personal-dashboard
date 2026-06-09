@@ -1704,11 +1704,14 @@
 }
 
 .hpd-root.hpd-theme-night .hpd-data-metric,
-.hpd-root.hpd-theme-night .hpd-data-label,
 .hpd-root.hpd-theme-night .hpd-button-secondary,
 .hpd-root.hpd-theme-night .hpd-button-ghost,
 .hpd-root.hpd-theme-night .hpd-card-expanded pre {
   background: var(--hpd-surface-soft);
+}
+
+.hpd-root.hpd-theme-night .hpd-data-label {
+  background: transparent;
 }
 
 .hpd-data-metric span {

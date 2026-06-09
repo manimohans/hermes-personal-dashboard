@@ -459,7 +459,10 @@
       "no ticket-registration alert",
       "possible injection",
       "silent empty output",
-      "silent_no_alert"
+      "silent_no_alert",
+      "source blocker",
+      "script exited with code",
+      "quality watchdog is blocked"
     ];
     for (let i = 0; i < internalPatterns.length; i += 1) {
       if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
@@ -811,7 +814,7 @@
         const url = typeof item === "object" && item ? (item.url || item.source_url || item.link) : "";
         return h("div", { key: index + ":" + title, className: "hpd-data-item" },
           url ? h("a", { href: url, target: "_blank", rel: "noreferrer" }, title) : h("strong", null, title),
-          summary && summary !== title ? h("p", null, summary) : null,
+          summary && summary !== title && title.toLowerCase().indexOf(summary.toLowerCase()) < 0 ? h("p", null, summary) : null,
           meta ? h("small", null, meta) : null
         );
       })
