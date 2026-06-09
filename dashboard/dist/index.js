@@ -417,15 +417,20 @@
     const payload = card.payload || {};
     if (payload.keep_visible) return false;
     if (payload.internal_card || payload.operational_metadata) return true;
+    const metrics = payload.metrics || {};
     const primaryText = [
       card.title || "",
       card.summary || "",
       card.source_label || ""
     ].join(" ").toLowerCase();
     const detailText = String(card.detail_md || "").toLowerCase();
+    if (metrics.latest_status === "silent_no_alert" || metrics.last_status === "blocked") return true;
+    if (metrics.alert_count === 0 && !hasArrayData(payload.items)) return true;
+    if (metrics.new_messages === 0 && !hasArrayData(payload.items)) return true;
     const internalPatterns = [
       " is authenticated",
       "access is available",
+      "blocked by cron injection",
       "formatting rules",
       "formatting preference",
       "preferred delivery style",
@@ -444,7 +449,17 @@
       "quality monitoring",
       "current cron environment",
       "briefing blocked",
-      "briefing is blocked"
+      "briefing is blocked",
+      "briefing needs attention",
+      "cron injection scanner",
+      "daycare update status",
+      "had no alert",
+      "latest watcher run",
+      "no new daycare",
+      "no ticket-registration alert",
+      "possible injection",
+      "silent empty output",
+      "silent_no_alert"
     ];
     for (let i = 0; i < internalPatterns.length; i += 1) {
       if (primaryText.indexOf(internalPatterns[i]) >= 0) return true;
@@ -621,7 +636,7 @@
     if (typeof value === "number" && Number.isFinite(value)) {
       return (Math.round(value * 10) / 10) + (suffix || "");
     }
-    return String(value) + (suffix || "");
+    return cleanDisplayText(value) + (suffix || "");
   }
 
   function humanLabel(value) {
@@ -630,7 +645,54 @@
       .replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
   }
 
+  function cleanDisplayText(value) {
+    return String(value || "")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/[_-]{6,}/g, " - ")
+      .replace(/^\s*[-•]\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function metricKey(label) {
+    return normalizeKey(label).replace(/-/g, "_");
+  }
+
+  function isUsefulMetric(label, value) {
+    const key = metricKey(label);
+    const hidden = {
+      alert_count: true,
+      curated_at: true,
+      file_updated_utc: true,
+      item_count: true,
+      job_id: true,
+      latest_check_time: true,
+      latest_poll_time: true,
+      latest_run_time: true,
+      latest_status: true,
+      new_messages: true,
+      observed_at: true,
+      query: true,
+      regular_market_time: true,
+      run_time: true,
+      section_count: true,
+      sensor_path: true,
+      source_file: true,
+      source_path: true,
+      status: true,
+    };
+    if (hidden[key]) return false;
+    if (key.indexOf("path") >= 0 || key.indexOf("file") >= 0 || key.indexOf("job") >= 0) return false;
+    if (typeof value === "string") {
+      const text = cleanDisplayText(value);
+      if (!text || text.length > 24 || text.indexOf("/") >= 0 || /\.md$/i.test(text)) return false;
+      if (/^\d{4}-\d{2}-\d{2}/.test(text)) return false;
+    }
+    return true;
+  }
+
   function DataMetric(props) {
+    if (!isUsefulMetric(props.label, props.value)) return null;
     const shown = displayValue(props.value, props.suffix);
     if (!shown) return null;
     return h("div", { className: "hpd-data-metric" },
@@ -694,20 +756,27 @@
 
   function itemTitle(item) {
     if (typeof item === "string") return item;
-    return item.title || item.subject || item.name || item.label || item.summary || "Item";
+    if (item.symbol) {
+      const price = item.price !== undefined ? displayValue(item.price) : "";
+      const pct = item.change_pct !== undefined ? displayValue(item.change_pct, "%") : "";
+      return cleanDisplayText([item.symbol, price, pct ? "(" + pct + ")" : ""].filter(Boolean).join(" "));
+    }
+    return cleanDisplayText(item.title || item.subject || item.name || item.label || item.text || item.summary || "Item");
   }
 
   function itemSummary(item) {
     if (typeof item === "string") return "";
-    return item.summary || item.description || item.snippet || item.detail || item.status || "";
+    return cleanDisplayText(item.summary || item.description || item.snippet || item.detail || item.status || "");
   }
 
   function itemMeta(item) {
     if (typeof item === "string") return "";
-    return [item.source, item.source_label, item.time, item.start, item.date, item.when]
+    const meta = [item.publisher, item.source, item.source_label, item.time, item.start, item.date, item.when]
       .filter(Boolean)
       .slice(0, 2)
       .join(" - ");
+    if (/google news:/i.test(meta)) return "";
+    return cleanDisplayText(meta);
   }
 
   function isInternalDataItem(item) {
@@ -735,7 +804,7 @@
     if (!Array.isArray(items) || !items.length) return null;
     return h("div", { className: "hpd-data-list" },
       h("span", { className: "hpd-data-label" }, props.label),
-      items.slice(0, 5).map(function (item, index) {
+      items.slice(0, 3).map(function (item, index) {
         const title = itemTitle(item);
         const summary = itemSummary(item);
         const meta = itemMeta(item);
