@@ -926,7 +926,7 @@
     const isPinned = Boolean(card.pinned) || card.status === "pinned";
     const expanded = Boolean(props.expanded);
     const hasDetail = Boolean(card.detail_md || card.why_shown);
-    return h("article", { className: cx("hpd-card", card.status === "stale" && "is-stale") },
+    return h("article", { className: cx("hpd-card", expanded && "is-expanded", card.status === "stale" && "is-stale") },
       h("div", { className: "hpd-card-top" },
         h("div", { className: "hpd-card-title-block" },
           h("div", { className: "hpd-card-domain" }, card.domain || "general"),
@@ -1009,8 +1009,11 @@
     if (!cards.length) return null;
     return h("section", { className: "hpd-briefing" },
       h("div", { className: "hpd-briefing-head" },
-        h("p", { className: "hpd-eyebrow" }, "Snapshot"),
-        h("h2", null, "What matters now")
+        h("div", null,
+          h("p", { className: "hpd-eyebrow" }, "Now"),
+          h("h2", null, "Live Snapshot")
+        ),
+        h(Badge, null, String(cards.slice(0, 5).length))
       ),
       h("div", { className: "hpd-briefing-grid" },
         cards.slice(0, 5).map(function (card) {
@@ -1166,11 +1169,7 @@
     const total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
     if (!total) return h(EmptyMain, { curation: props.curation, onOpenDetails: props.onOpenDetails });
     return h("div", { className: "hpd-sections" },
-      grouped.now.length ? h(CardSection, Object.assign({
-        title: "Now",
-        cards: grouped.now,
-        empty: "No urgent Hermes-curated cards.",
-      }, props.cardActions)) : null,
+      grouped.now.length ? h(Overview, { cards: grouped.now }) : null,
       grouped.today.length ? h(CardSection, Object.assign({
         title: "Today",
         cards: grouped.today,

@@ -1051,7 +1051,7 @@
     var expanded = Boolean(state.expandedCards[card.id]);
     var hasDetail = Boolean(card.detail_md || card.why_shown);
     var dataView = structuredData(card);
-    return el("article", { className: cx("hpd-card", card.status === "stale" && "is-stale") },
+    return el("article", { className: cx("hpd-card", expanded && "is-expanded", card.status === "stale" && "is-stale") },
       el("div", { className: "hpd-card-top" },
         el("div", { className: "hpd-card-title-block" },
           el("div", { className: "hpd-card-domain", text: card.domain || "general" }),
@@ -1101,8 +1101,11 @@
     var top = cards.slice(0, 5);
     return el("section", { className: "hpd-briefing" },
       el("div", { className: "hpd-briefing-head" },
-        el("p", { className: "hpd-eyebrow", text: "Snapshot" }),
-        el("h2", { text: "What matters now" })
+        el("div", null,
+          el("p", { className: "hpd-eyebrow", text: "Now" }),
+          el("h2", { text: "Live Snapshot" })
+        ),
+        badge(String(top.length))
       ),
       el("div", { className: "hpd-briefing-grid" },
         top.map(function (card) {
@@ -1289,7 +1292,7 @@
 		  var total = grouped.now.length + grouped.today.length + grouped.week.length + grouped.watching.length;
 		  if (!total) return emptyMain(curation, onOpenDetails);
 		  return el("div", { className: "hpd-sections" },
-	      grouped.now.length ? cardSection("Now", grouped.now, "") : null,
+	      grouped.now.length ? overview(grouped.now) : null,
 	      grouped.today.length ? cardSection("Today", grouped.today, "") : null,
 	      grouped.week.length ? cardSection("This Week", grouped.week, "") : null,
       grouped.watching.length ? cardSection("On Radar", grouped.watching, "") : null
