@@ -179,7 +179,7 @@
     return today;
   }
 
-  function themeClass(snapshot) {
+  function themeClass(snapshot, _tick) {
     const params = new URLSearchParams(window.location.search || "");
     const override = String(params.get("theme") || "").toLowerCase();
     if (override === "dark" || override === "night") return "hpd-theme-night";
@@ -498,6 +498,39 @@
       return !isScannerCard(card) && !isInternalContextCard(card);
     });
     return dedupeTopicCards(filtered);
+  }
+
+  function stableStringify(value) {
+    if (Array.isArray(value)) {
+      return "[" + value.map(stableStringify).join(",") + "]";
+    }
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map(function (key) {
+        return JSON.stringify(key) + ":" + stableStringify(value[key]);
+      }).join(",") + "}";
+    }
+    const encoded = JSON.stringify(value);
+    return encoded === undefined ? "null" : encoded;
+  }
+
+  function snapshotFingerprint(snapshot) {
+    const cards = visibleCards((snapshot && snapshot.cards) || []);
+    return stableStringify(cards.map(function (card) {
+      return {
+        id: card.id,
+        domain: card.domain,
+        title: card.title,
+        summary: card.summary,
+        priority: card.priority,
+        status: card.status,
+        pinned: Boolean(card.pinned),
+        updated_at: card.updated_at,
+        valid_until: card.valid_until,
+        payload: card.payload || {}
+      };
+    }).sort(function (a, b) {
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    }));
   }
 
   function cronJobCount(preferences) {
@@ -1164,12 +1197,19 @@
     const [notice, setNotice] = React.useState("");
     const [detailsOpen, setDetailsOpen] = React.useState(false);
     const [expandedCards, setExpandedCards] = React.useState({});
+    const cardFingerprintRef = React.useRef("");
+    const [themeTick, setThemeTick] = React.useState(Date.now());
+
+    const setSnapshotFromServer = React.useCallback(function (data) {
+      cardFingerprintRef.current = snapshotFingerprint(data);
+      setSnapshot(data);
+    }, []);
 
     const load = React.useCallback(function () {
       setLoading(true);
       return request("/snapshot")
         .then(function (data) {
-          setSnapshot(data);
+          setSnapshotFromServer(data);
           setError("");
         })
         .catch(function (err) {
@@ -1178,16 +1218,36 @@
         .finally(function () {
           setLoading(false);
         });
-    }, []);
+    }, [setSnapshotFromServer]);
 
     React.useEffect(function () {
       load();
     }, [load]);
 
     React.useEffect(function () {
-      const id = window.setInterval(load, 60000);
+      const id = window.setInterval(function () {
+        request("/snapshot?auto_refresh=false")
+          .then(function (data) {
+            const nextFingerprint = snapshotFingerprint(data);
+            if (cardFingerprintRef.current && nextFingerprint && nextFingerprint !== cardFingerprintRef.current) {
+              window.location.reload();
+              return;
+            }
+            if (!cardFingerprintRef.current) {
+              cardFingerprintRef.current = nextFingerprint;
+            }
+          })
+          .catch(function () {});
+      }, 15000);
       return function () { window.clearInterval(id); };
-    }, [load]);
+    }, []);
+
+    React.useEffect(function () {
+      const id = window.setInterval(function () {
+        setThemeTick(Date.now());
+      }, 60000);
+      return function () { window.clearInterval(id); };
+    }, []);
 
     function mutate(promise) {
       setMutating(true);
@@ -1260,7 +1320,7 @@
       expandedCards: expandedCards,
     };
 
-    return h("main", { className: cx("hpd-root", themeClass(snapshot)) },
+    return h("main", { className: cx("hpd-root", themeClass(snapshot, themeTick)) },
       h("header", { className: "hpd-header" },
         h("div", null,
           h("p", { className: "hpd-eyebrow" }, "Hermes Agent"),

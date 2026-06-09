@@ -4,6 +4,7 @@
   var API = "/api/plugins/hermes-personal-dashboard";
 	var state = {
 	  snapshot: null,
+	  cardFingerprint: "",
 	  loading: true,
 	  mutating: false,
 	  error: "",
@@ -534,6 +535,39 @@
     return dedupeTopicCards(filtered);
   }
 
+  function stableStringify(value) {
+    if (Array.isArray(value)) {
+      return "[" + value.map(stableStringify).join(",") + "]";
+    }
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map(function (key) {
+        return JSON.stringify(key) + ":" + stableStringify(value[key]);
+      }).join(",") + "}";
+    }
+    var encoded = JSON.stringify(value);
+    return encoded === undefined ? "null" : encoded;
+  }
+
+  function snapshotFingerprint(snapshot) {
+    var cards = visibleCards((snapshot && snapshot.cards) || []);
+    return stableStringify(cards.map(function (card) {
+      return {
+        id: card.id,
+        domain: card.domain,
+        title: card.title,
+        summary: card.summary,
+        priority: card.priority,
+        status: card.status,
+        pinned: Boolean(card.pinned),
+        updated_at: card.updated_at,
+        valid_until: card.valid_until,
+        payload: card.payload || {}
+      };
+    }).sort(function (a, b) {
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    }));
+  }
+
   function cronJobCount(preferences) {
     var jobs = (preferences && preferences.cron_jobs) || {};
     return Object.keys(jobs).filter(function (key) { return jobs[key]; }).length;
@@ -986,6 +1020,7 @@
     render();
     return request("/snapshot").then(function (data) {
       state.snapshot = data;
+      state.cardFingerprint = snapshotFingerprint(data);
       state.error = "";
     }).catch(function (err) {
       state.error = err.message || String(err);
@@ -993,6 +1028,21 @@
       state.loading = false;
       state.mutating = false;
       render();
+    });
+  }
+
+  function checkForCardChanges() {
+    return request("/snapshot?auto_refresh=false").then(function (data) {
+      var nextFingerprint = snapshotFingerprint(data);
+      if (state.cardFingerprint && nextFingerprint && nextFingerprint !== state.cardFingerprint) {
+        window.location.reload();
+        return;
+      }
+      if (!state.cardFingerprint) {
+        state.cardFingerprint = nextFingerprint;
+      }
+    }).catch(function () {
+      // Transient polling failures should not interrupt reading the dashboard.
     });
   }
 
@@ -1299,5 +1349,6 @@
   }
 
   load();
-  window.setInterval(load, 60 * 1000);
+  window.setInterval(checkForCardChanges, 15 * 1000);
+  window.setInterval(render, 60 * 1000);
 })();
